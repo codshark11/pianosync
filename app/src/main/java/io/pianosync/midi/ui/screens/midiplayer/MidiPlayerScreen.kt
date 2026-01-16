@@ -137,8 +137,11 @@ fun NoteFallVisualizer(
     val noteHeight = 16.dp
     val futureTimeWindow = 8000L
     val pastTimeWindow = 2000L
-    val visualizerHeight = (configuration.screenHeightDp).dp
-    val playLinePosition = visualizerHeight - noteHeight
+    val topBarHeight = 64.dp
+    val pianoKeyboardHeight = 120.dp
+    val spacingAboveKeyboard = 4.dp // Small spacing between play line and keyboard
+    val visualizerHeight = (configuration.screenHeightDp).dp - topBarHeight
+    val playLinePosition = visualizerHeight - pianoKeyboardHeight - spacingAboveKeyboard
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
 
     val whiteKeyWidth = pianoConfig.keyWidth
@@ -282,8 +285,7 @@ fun NoteFallVisualizer(
     Box(
         modifier = modifier
             .background(MaterialTheme.colorScheme.background) // Use theme background
-            .width(totalWidth)
-            .horizontalScroll(rememberScrollState())
+            .fillMaxSize()
     ) {
         // Play line with theme accent
         Box(
@@ -297,8 +299,15 @@ fun NoteFallVisualizer(
                 )
         )
 
-        // Notes
-        visibleNotes.forEach { note ->
+        // Scrollable notes container
+        Box(
+            modifier = Modifier
+                .width(totalWidth)
+                .fillMaxHeight()
+                .horizontalScroll(rememberScrollState())
+        ) {
+            // Notes
+            visibleNotes.forEach { note ->
             val startY = timeToYPosition(note.startTime)
             val endY = timeToYPosition(note.startTime + note.duration)
             val topY = minOf(startY, endY)
@@ -334,6 +343,7 @@ fun NoteFallVisualizer(
                         )
                 )
             }
+        }
         }
     }
 }
@@ -1606,7 +1616,7 @@ fun MidiPlayerScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .height(160.dp),
+                        .height(120.dp),
                     pianoConfig = pianoConfig!!,
                     pressedKeys = pressedKeys,
                     currentNotes = activeNotes,
