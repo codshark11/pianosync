@@ -7,13 +7,12 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.annotation.RequiresApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 class MidiConnectionManager private constructor(private val context: Context) {
-    private val midiManager: MidiManager = context.getSystemService(Context.MIDI_SERVICE) as MidiManager
+    private val midiManager: MidiManager? = context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
     private var currentDevice: MidiDevice? = null
     private var midiReceiver: MidiReceiver? = null
     private var currentDeviceInfo: MidiDeviceInfo? = null
@@ -36,22 +35,28 @@ class MidiConnectionManager private constructor(private val context: Context) {
     // Expose recording manager
     fun getRecordingManager(): MidiRecordingManager = recordingManager
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private val deviceCallback = object : MidiManager.DeviceCallback() {
-        override fun onDeviceAdded(device: MidiDeviceInfo) {
-            Log.d("MidiConnection", "Device added: ${device.properties}")
-            handleDeviceConnection(device)
-        }
+    private val deviceCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        object : MidiManager.DeviceCallback() {
+            override fun onDeviceAdded(device: MidiDeviceInfo) {
+                Log.d("MidiConnection", "Device added: ${device.properties}")
+                handleDeviceConnection(device)
+            }
 
-        override fun onDeviceRemoved(device: MidiDeviceInfo) {
-            if (currentDeviceInfo == device) {
-                closeCurrentDevice()
+            override fun onDeviceRemoved(device: MidiDeviceInfo) {
+                if (currentDeviceInfo == device) {
+                    closeCurrentDevice()
+                }
             }
         }
-    }
+    } else null
 
     fun initialize() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (midiManager == null) {
+            _errorMessage.value = "MIDI not supported on this device"
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && deviceCallback != null) {
             midiManager.registerDeviceCallback(
                 deviceCallback,
                 Handler(Looper.getMainLooper())
@@ -62,20 +67,12 @@ class MidiConnectionManager private constructor(private val context: Context) {
 
     private fun handleDeviceConnection(deviceInfo: MidiDeviceInfo) {
         Log.d("MidiConnection", "Handling device connection")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && context is ComponentActivity) {
-            try {
-                openDevice(deviceInfo)
-            } catch (e: SecurityException) {
-                _errorMessage.value = "Permission denied: ${e.message}"
-                _isConnected.value = false
-            }
-        } else {
-            openDevice(deviceInfo)
-        }
+        // The permission logic for MIDI was introduced later, but openDevice exists since API 23
+        openDevice(deviceInfo)
     }
 
     private fun openDevice(deviceInfo: MidiDeviceInfo) {
-        midiManager.openDevice(
+        midiManager?.openDevice(
             deviceInfo,
             { device ->
                 if (device == null) {
@@ -160,6 +157,8 @@ class MidiConnectionManager private constructor(private val context: Context) {
     }
 
     private fun checkExistingDevices() {
+        if (midiManager == null) return
+        
         val devices = midiManager.devices
         Log.d("MidiConnection", "Found ${devices.size} MIDI devices")
 
@@ -204,7 +203,7 @@ class MidiConnectionManager private constructor(private val context: Context) {
     }
 
     fun cleanup() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        if (midiManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && deviceCallback != null) {
             midiManager.unregisterDeviceCallback(deviceCallback)
         }
         closeCurrentDevice()

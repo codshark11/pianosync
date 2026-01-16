@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "io.pianosync.midi"
-        minSdk = 28
+        minSdk = 21
         targetSdk = 35
         versionCode = 6
         versionName = "0.5.6"
@@ -28,6 +28,7 @@ android {
         }
     }
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
@@ -40,6 +41,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
