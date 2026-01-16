@@ -5,7 +5,6 @@ import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.CircularProgressIndicator
@@ -13,6 +12,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -42,7 +44,9 @@ class MainActivity : ComponentActivity() {
         midiManager.initialize()
 
         requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        enableEdgeToEdge()
+        
+        // Hide system bars for immersive fullscreen game-like experience
+        hideSystemBars()
 
         setContent {
             PianoSyncTheme {
@@ -149,11 +153,30 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            // Re-hide system bars when window regains focus
+            hideSystemBars()
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         // Only cleanup MIDI when the activity is actually being destroyed
         if (isFinishing) {
             midiManager.cleanup()
+        }
+    }
+
+    private fun hideSystemBars() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val windowInsetsController = WindowCompat.getInsetsController(window, window.decorView)
+        windowInsetsController?.let { controller ->
+            // Hide both status bar and navigation bar
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+            // Make it immersive sticky - bars stay hidden even after user interactions
+            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
     }
 }
