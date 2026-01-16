@@ -95,10 +95,18 @@ fun calculateNotePosition(
 ): Float {
     val whiteKeysBefore = (minNote until note).count { isWhiteKey(it) }
     return if (isBlackKey) {
-        // Position black key relative to previous white key
+        // Position black key in the gap between white keys
+        // White keys have 1dp horizontal padding on each side
+        // Find the previous white key position
         val prevWhiteKey = (note - 1 downTo minNote).first { isWhiteKey(it) }
         val whiteKeysBeforePrev = (minNote until prevWhiteKey).count { isWhiteKey(it) }
-        (whiteKeysBeforePrev * keyWidth) + (keyWidth * 0.7f)
+        
+        // The previous white key ends at: (whiteKeysBeforePrev * keyWidth + keyWidth - 1dp)
+        // The next white key starts at: ((whiteKeysBeforePrev + 1) * keyWidth + 1dp)
+        // Center of gap is between these two points
+        val prevEnd = (whiteKeysBeforePrev * keyWidth) + keyWidth - 1f
+        val nextStart = ((whiteKeysBeforePrev + 1) * keyWidth) + 1f
+        (prevEnd + nextStart) / 2f
     } else {
         whiteKeysBefore * keyWidth
     }
@@ -133,9 +141,6 @@ fun NoteFallVisualizer(
     val playLinePosition = visualizerHeight - noteHeight
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
 
-    // Add manual X offset to align notes with keys
-    val xOffset = 10.dp
-
     val whiteKeyWidth = pianoConfig.keyWidth
     val whiteNoteWidth = whiteKeyWidth * 0.6f
     val blackNoteWidth = whiteKeyWidth * 0.4f
@@ -168,16 +173,25 @@ fun NoteFallVisualizer(
     }
 
     fun calculateNoteXPosition(note: Int): Float {
-        val whiteKeysBefore = (pianoConfig.minNote until note).count { isWhiteKey(it) }
+        // Use the same positioning logic as the keyboard for consistency
+        // The piano keyboard Box has padding(4.dp), so we need to account for that offset
+        val keyboardPadding = 4f
+        
         val isBlackKey = !isWhiteKey(note)
-
+        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, whiteKeyWidth, isBlackKey)
+        
         return if (isBlackKey) {
-            val prevWhiteKey = (note - 1 downTo pianoConfig.minNote).first { isWhiteKey(it) }
-            val whiteKeysBeforePrev = (pianoConfig.minNote until prevWhiteKey).count { isWhiteKey(it) }
-            val basePosition = whiteKeysBeforePrev * whiteKeyWidth + (whiteKeyWidth * 0.7f)
-            basePosition - (blackNoteWidth / 2f) + (whiteKeyWidth * 0.1f)
+            // For black keys: keyPosition is already the center of the gap
+            // Center the note on that position, accounting for keyboard padding
+            keyboardPadding + keyPosition - (blackNoteWidth / 2f)
         } else {
-            whiteKeysBefore * whiteKeyWidth + ((whiteKeyWidth - whiteNoteWidth) / 2f)
+            // For white keys: keyPosition is the left edge of the white key
+            // White keys have 1dp padding on each side, so the visible area starts at keyPosition + 1dp
+            // Center the note within the visible white key area
+            // Visible width = whiteKeyWidth - 2dp (1dp padding on each side)
+            // Note should be centered: keyPosition + 1dp + (visibleWidth - noteWidth) / 2
+            val visibleKeyWidth = whiteKeyWidth - 2f // Account for 1dp padding on each side
+            keyboardPadding + keyPosition + 1f + ((visibleKeyWidth - whiteNoteWidth) / 2f)
         }
     }
 
@@ -302,7 +316,7 @@ fun NoteFallVisualizer(
 
                 Box(
                     modifier = Modifier
-                        .offset(x = (xPos.dp + xOffset), y = topY.dp)
+                        .offset(x = xPos.dp, y = topY.dp)
                         .width(noteWidth)
                         .height(noteHeightPx.dp)
                         .background(
@@ -1707,18 +1721,21 @@ fun EnhancedPianoLayout(
             }
         }
 
-        // Black keys
+        // Black keys - positioned in gaps between white keys
         Box(modifier = Modifier.fillMaxSize()) {
             (pianoConfig.minNote..pianoConfig.maxNote).forEach { note ->
                 if (!isWhiteKey(note)) {
                     val xPos = calculateNotePosition(note, pianoConfig.minNote, pianoConfig.keyWidth, true)
+                    val blackKeyWidth = pianoConfig.keyWidth * 0.6f
+                    // xPos is the center of the gap, subtract half black key width to get left edge
                     EnhancedBlackKey(
-                        modifier = Modifier.offset(x = xPos.dp),
+                        modifier = Modifier.offset(x = (xPos - blackKeyWidth / 2f).dp),
                         note = note,
                         isPhysicallyPressed = note in pressedKeys,
                         isHighlighted = currentNotes.any { it.note == note && note in pressedKeys },
                         showKeyName = showKeyNames,
-                        onPressed = onNotePressed
+                        onPressed = onNotePressed,
+                        keyWidth = pianoConfig.keyWidth
                     )
                 }
             }
@@ -1802,7 +1819,8 @@ fun EnhancedBlackKey(
     isPhysicallyPressed: Boolean = false,
     isHighlighted: Boolean = false,
     showKeyName: Boolean = false,
-    onPressed: (Int) -> Unit
+    onPressed: (Int) -> Unit,
+    keyWidth: Float = 0f // Add keyWidth parameter
 ) {
     var isVirtuallyPressed by remember { mutableStateOf(false) }
 
@@ -1825,9 +1843,12 @@ fun EnhancedBlackKey(
         animationSpec = tween(durationMillis = 50)
     )
 
+    // Calculate black key width as proportion of white key width
+    val blackKeyWidth = if (keyWidth > 0f) (keyWidth * 0.6f).dp else 24.dp
+
     Box(
         modifier = modifier
-            .width(24.dp)
+            .width(blackKeyWidth)
             .fillMaxHeight(0.62f)
             .scale(animatedScale)
             .background(
