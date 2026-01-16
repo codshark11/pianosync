@@ -216,6 +216,21 @@ object MidiParser {
             
             val quarternote = midiFile.time.quarter
 
+            // Validate BPM and quarternote to prevent division by zero
+            val safeBpm = if (originalBpm <= 0) {
+                Log.w("MidiParser", "Invalid BPM ($originalBpm), using fallback: ${bpm.coerceAtLeast(1)}")
+                bpm.coerceAtLeast(1)
+            } else {
+                originalBpm
+            }
+            
+            val safeQuarternote = if (quarternote <= 0) {
+                Log.w("MidiParser", "Invalid quarternote ($quarternote), using fallback: 480")
+                480
+            } else {
+                quarternote
+            }
+
             // First pass: collect all note values by track to determine which tracks have notes
             val trackNotesData = mutableMapOf<Int, MutableList<Int>>()
 
@@ -286,9 +301,11 @@ object MidiParser {
 
                 // Convert MidiSheetMusic notes to our app's MidiNote format
                 track.notes.forEach { midiNote ->
-                    // Convert pulses to milliseconds
-                    val startTimeMs = (midiNote.startTime * 60_000L) / (originalBpm * quarternote)
-                    val durationMs = (midiNote.duration * 60_000L) / (originalBpm * quarternote)
+                    // Convert pulses to milliseconds with improved precision
+                    // Formula: (pulses * 60_000 ms/min) / (BPM * pulses_per_quarter_note)
+                    // Use Long arithmetic to prevent overflow and improve precision
+                    val startTimeMs = (midiNote.startTime.toLong() * 60_000L) / (safeBpm.toLong() * safeQuarternote.toLong())
+                    val durationMs = (midiNote.duration.toLong() * 60_000L) / (safeBpm.toLong() * safeQuarternote.toLong())
                     
                     notes.add(
                         MidiNote(

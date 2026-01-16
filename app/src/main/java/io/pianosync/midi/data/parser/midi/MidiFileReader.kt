@@ -123,6 +123,8 @@ class MidiFileReader
     /** Read a variable-length integer (1 to 4 bytes). The integer ends
      * when you encounter a byte that doesn't have the 8th bit set
      * (a byte less than 0x80).
+     * MIDI spec allows up to 4 bytes total (28 bits), so we need to handle
+     * up to 3 continuation bytes after the first byte.
      */
     fun ReadVarlen(): Int {
         var result = 0
@@ -131,6 +133,7 @@ class MidiFileReader
         b = ReadByte()
         result = (b.toInt() and 0x7f)
 
+        // Allow up to 3 continuation bytes (for a total of 4 bytes as per MIDI spec)
         for (i in 0..2) {
             if ((b.toInt() and 0x80) != 0) {
                 b = ReadByte()

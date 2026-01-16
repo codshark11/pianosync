@@ -303,6 +303,10 @@ class MidiFile(
 
         /* Get the length of the song in pulses */
         for (track in tracks!!) {
+            // Skip empty tracks to prevent IndexOutOfBoundsException
+            if (track.notes.isEmpty()) {
+                continue
+            }
             val last = track.notes.get(track.notes.size - 1)
             if (this.totalPulses < last.startTime + last.duration) {
                 this.totalPulses = last.startTime + last.duration
@@ -338,7 +342,7 @@ class MidiFile(
             }
         }
         if (tempo == 0L) {
-            tempo = 500000 /* 500,000 microseconds = 0.05 sec */
+            tempo = 500000 /* 500,000 microseconds = 0.5 sec = 120 BPM */
         } else {
             tempo = tempo / tempoCount
         }
