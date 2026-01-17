@@ -44,6 +44,7 @@ import io.pianosync.midi.data.model.MidiFile
 import io.pianosync.midi.data.model.PerformanceRecord
 import io.pianosync.midi.data.model.PlayedNote
 import io.pianosync.midi.data.parser.MidiParser
+import io.pianosync.midi.data.parser.midi.MidiFile as ParsedMidiFile
 import io.pianosync.midi.data.repository.MidiFileRepository
 import io.pianosync.midi.data.repository.MidiRecordingRepository
 import io.pianosync.midi.data.repository.PerformanceRepository
@@ -52,6 +53,7 @@ import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.data.model.DifficultyLevel
 import io.pianosync.midi.ui.screens.player.components.LoopControl
 import io.pianosync.midi.ui.screens.player.components.MetronomeVisualizer
+import io.pianosync.midi.ui.screens.midiplayer.sheetmusic.SheetMusicView
 import io.pianosync.midi.ui.theme.AccentRose
 import io.pianosync.midi.ui.theme.RoyalPurple40
 import io.pianosync.midi.ui.theme.WarmGold60
@@ -384,6 +386,11 @@ enum class HandMode {
     RIGHT_HAND_ONLY
 }
 
+enum class ViewMode {
+    FALLING_NOTES,
+    SHEET_MUSIC
+}
+
 private fun formatRecordingTime(durationMs: Long): String {
     val seconds = (durationMs / 1000) % 60
     val minutes = (durationMs / (1000 * 60)) % 60
@@ -417,7 +424,9 @@ fun MidiPlayerScreen(
     val pressedKeys by midiConnectionManager.pressedKeys.collectAsState()
     var isPreLoading by remember { mutableStateOf(true) }
     var midiNotes by remember { mutableStateOf<List<MidiNote>>(emptyList()) }
+    var timeSignature by remember { mutableStateOf<io.pianosync.midi.data.parser.midi.TimeSignature?>(null) }
     var currentHandMode by remember { mutableStateOf(HandMode.BOTH_HANDS) }
+    var viewMode by remember { mutableStateOf(ViewMode.FALLING_NOTES) }
     var pianoConfig by remember { mutableStateOf<PianoConfiguration?>(null) }
     val playbackManager = remember { MidiPlaybackManager(context, midiConnectionManager) }
     var songDurationMs by remember { mutableStateOf(0L) }
@@ -615,7 +624,16 @@ fun MidiPlayerScreen(
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
                 // Always parse with the original BPM to get correct absolute times
                 val originalBpm = midiFile.originalBpm ?: 120
-                val notes = MidiParser.parseMidiNotes(inputStream, originalBpm)
+                
+                // Read MIDI file bytes once
+                val midiBytes = inputStream.readBytes()
+                
+                // Extract time signature from MIDI file
+                val parsedMidiFile = ParsedMidiFile(midiBytes, "")
+                timeSignature = parsedMidiFile.time
+                
+                // Parse notes using the same MIDI file data
+                val notes = MidiParser.parseMidiNotes(midiBytes.inputStream(), originalBpm)
                 midiNotes = notes
 
                 // Calculate song duration based on the last note end time
@@ -760,6 +778,29 @@ fun MidiPlayerScreen(
                                     }
                                 ) {
                                     Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                }
+
+                                // View mode toggle
+                                IconButton(
+                                    onClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        viewMode = when (viewMode) {
+                                            ViewMode.FALLING_NOTES -> ViewMode.SHEET_MUSIC
+                                            ViewMode.SHEET_MUSIC -> ViewMode.FALLING_NOTES
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = when (viewMode) {
+                                            ViewMode.FALLING_NOTES -> Icons.Default.MusicNote
+                                            ViewMode.SHEET_MUSIC -> Icons.Default.LibraryMusic
+                                        },
+                                        contentDescription = "View Mode",
+                                        tint = if (viewMode == ViewMode.SHEET_MUSIC) 
+                                            MaterialTheme.colorScheme.primary 
+                                        else 
+                                            Color.White
+                                    )
                                 }
 
                                 // Hand mode selector
@@ -1033,27 +1074,46 @@ fun MidiPlayerScreen(
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                NoteFallVisualizer(
-                    modifier = Modifier.fillMaxSize(),
-                    notes = when (currentHandMode) {
-                        HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
-                        HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
-                        HandMode.BOTH_HANDS -> midiNotes
-                    },
-                    currentTimeMs = currentTimeMs,
-                    isPlaying = isPlaybackActive,
-                    bpm = currentBpm ?: 120,
-                    pianoConfig = pianoConfig!!,
-                    isPreLoading = isPreLoading,
-                    playbackManager = playbackManager,
-                    correctlyPlayedNotes = correctlyPlayedNotes,
-                    pressedKeys = pressedKeys,
-                    settings = settings, // Pass settings to visualizer
-                    onNoteProcessed = {
-                        // Make sure we're tracking processed notes
-                        totalNotesPlayed++
+                when (viewMode) {
+                    ViewMode.FALLING_NOTES -> {
+                        NoteFallVisualizer(
+                            modifier = Modifier.fillMaxSize(),
+                            notes = when (currentHandMode) {
+                                HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
+                                HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
+                                HandMode.BOTH_HANDS -> midiNotes
+                            },
+                            currentTimeMs = currentTimeMs,
+                            isPlaying = isPlaybackActive,
+                            bpm = currentBpm ?: 120,
+                            pianoConfig = pianoConfig!!,
+                            isPreLoading = isPreLoading,
+                            playbackManager = playbackManager,
+                            correctlyPlayedNotes = correctlyPlayedNotes,
+                            pressedKeys = pressedKeys,
+                            settings = settings, // Pass settings to visualizer
+                            onNoteProcessed = {
+                                // Make sure we're tracking processed notes
+                                totalNotesPlayed++
+                            }
+                        )
                     }
-                )
+                    ViewMode.SHEET_MUSIC -> {
+                        SheetMusicView(
+                            modifier = Modifier.fillMaxSize(),
+                            notes = when (currentHandMode) {
+                                HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
+                                HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
+                                HandMode.BOTH_HANDS -> midiNotes
+                            },
+                            currentTimeMs = currentTimeMs,
+                            isPlaying = isPlaybackActive,
+                            bpm = currentBpm ?: 120,
+                            isPreLoading = isPreLoading,
+                            timeSignature = timeSignature
+                        )
+                    }
+                }
 
                 if (showScoreDialog) {
                     val sessionDurationMs = System.currentTimeMillis() - sessionStartTimeMs
