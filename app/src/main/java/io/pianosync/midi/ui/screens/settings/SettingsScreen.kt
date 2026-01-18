@@ -2,7 +2,10 @@ package io.pianosync.midi.ui.screens.settings
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.verticalScroll
@@ -10,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -237,14 +241,16 @@ fun SettingsItem(
     onClick: (() -> Unit)? = null,
     trailing: @Composable (() -> Unit)? = null
 ) {
+    val indication = LocalIndication.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .then(
                 if (onClick != null) {
-                    Modifier.selectable(
-                        selected = false,
-                        onClick = onClick
+                    Modifier.clickable(
+                        onClick = onClick,
+                        indication = indication,
+                        interactionSource = remember { MutableInteractionSource() }
                     )
                 } else Modifier
             )
@@ -296,13 +302,16 @@ fun DifficultySelectionDialog(
                     .heightIn(max = 300.dp) // Limit height and make scrollable
                     .verticalScroll(rememberScrollState())
             ) {
+                val indication = LocalIndication.current
                 DifficultyLevel.values().forEach { level ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .selectable(
                                 selected = level == currentLevel,
-                                onClick = { onLevelSelected(level) }
+                                onClick = { onLevelSelected(level) },
+                                indication = indication,
+                                interactionSource = remember { MutableInteractionSource() }
                             )
                             .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically

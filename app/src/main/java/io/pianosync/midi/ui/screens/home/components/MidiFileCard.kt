@@ -3,7 +3,9 @@ package io.pianosync.midi.ui.screens.home.components
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -56,6 +58,7 @@ fun MidiFileCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val indication = LocalIndication.current
     var showDeleteDialog by remember { mutableStateOf(false) }
     var isPressed by remember { mutableStateOf(false) }
 
@@ -141,7 +144,9 @@ fun MidiFileCard(
             )
             .combinedClickable(
                 onClick = onClick,
-                onLongClick = { showDeleteDialog = true }
+                onLongClick = { showDeleteDialog = true },
+                indication = indication,
+                interactionSource = remember { MutableInteractionSource() }
             ),
         colors = CardDefaults.cardColors(
             containerColor = Color.Transparent,

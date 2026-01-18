@@ -1,7 +1,10 @@
 package io.pianosync.midi.ui.screens.player
 
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
@@ -40,6 +43,7 @@ import androidx.compose.ui.window.Dialog
 import io.pianosync.midi.data.manager.MetronomeManager
 import io.pianosync.midi.data.manager.MidiConnectionManager
 import io.pianosync.midi.data.manager.MidiPlaybackManager
+import io.pianosync.midi.data.manager.SheetMusicFileManager
 import io.pianosync.midi.data.model.MidiFile
 import io.pianosync.midi.data.model.PerformanceRecord
 import io.pianosync.midi.data.model.PlayedNote
@@ -52,6 +56,9 @@ import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.data.model.DifficultyLevel
 import io.pianosync.midi.ui.screens.player.components.LoopControl
 import io.pianosync.midi.ui.screens.player.components.MetronomeVisualizer
+import io.pianosync.midi.ui.screens.sheetmusic.SheetMusicView
+import io.pianosync.midi.ui.screens.sheetmusic.SheetMusicViewModel
+import androidx.lifecycle.viewmodel.compose.viewModel
 import io.pianosync.midi.ui.theme.AccentRose
 import io.pianosync.midi.ui.theme.RoyalPurple40
 import io.pianosync.midi.ui.theme.WarmGold60
@@ -415,6 +422,53 @@ fun MidiPlayerScreen(
     var recordingDuration by remember { mutableStateOf(0L) }
     val isConnected by midiConnectionManager.isConnected.collectAsState()
 
+    // Sheet music state
+    val sheetMusicViewModel: SheetMusicViewModel = viewModel()
+    var showSheetMusic by remember { mutableStateOf(false) }
+    var hasSheetMusic by remember { mutableStateOf(false) }
+    var sheetMusicLoading by remember { mutableStateOf(false) }
+    
+    // File picker for manual XML file selection
+    val xmlFileLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        uri?.let { xmlUri ->
+            scope.launch {
+                try {
+                    // Initialize the ViewModel before trying to load files
+                    sheetMusicViewModel.initIfNeeded(context)
+                    
+                    // Request persistent URI permission
+                    val takeFlags: Int = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(xmlUri, takeFlags)
+                    
+                    // Copy to temp file for Verovio
+                    val tempFile = SheetMusicFileManager.copyUriToTempFile(context, xmlUri)
+                    tempFile?.let { file ->
+                        hasSheetMusic = sheetMusicViewModel.onLoadFile(file.absolutePath)
+                        Log.d("MidiPlayer", "Sheet music loaded manually: $hasSheetMusic from file: ${file.absolutePath}")
+                        if (!hasSheetMusic) {
+                            Log.w("MidiPlayer", "Verovio failed to load XML file. File exists: ${file.exists()}, size: ${file.length()} bytes")
+                            // Try to read first few lines to see if it's valid XML
+                            try {
+                                val firstLines = file.readLines().take(5).joinToString("\n")
+                                Log.d("MidiPlayer", "First 5 lines of XML file:\n$firstLines")
+                            } catch (e: Exception) {
+                                Log.e("MidiPlayer", "Error reading XML file", e)
+                            }
+                        }
+                    } ?: run {
+                        hasSheetMusic = false
+                        Log.w("MidiPlayer", "Failed to copy XML file to temp location")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MidiPlayer", "Error loading sheet music manually", e)
+                    hasSheetMusic = false
+                }
+            }
+        }
+    }
+
     val view = LocalView.current
     DisposableEffect(isPlaybackActive) {
         if (isPlaybackActive) {
@@ -582,6 +636,51 @@ fun MidiPlayerScreen(
             metronomeManager.start(currentBpm ?: 120, metronomeBeatCount, volume = settings.metronomeVolume)
         } else if (!isPlaybackActive && isMetronomeRunning) {
             metronomeManager.stop()
+        }
+    }
+
+    // Check for matching XML file when MIDI file loads
+    LaunchedEffect(midiFile) {
+        try {
+            val midiUri = Uri.parse(midiFile.path)
+            sheetMusicLoading = true
+            
+            // Initialize the ViewModel before trying to load files
+            sheetMusicViewModel.initIfNeeded(context)
+            
+            val xmlUri = SheetMusicFileManager.findMatchingXmlFile(context, midiUri)
+            
+            if (xmlUri != null) {
+                // Request persistent URI permission
+                try {
+                    val takeFlags: Int = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                    context.contentResolver.takePersistableUriPermission(xmlUri, takeFlags)
+                    
+                    // Copy to temp file for Verovio
+                    val tempFile = SheetMusicFileManager.copyUriToTempFile(context, xmlUri)
+                    tempFile?.let { file ->
+                        hasSheetMusic = sheetMusicViewModel.onLoadFile(file.absolutePath)
+                        Log.d("MidiPlayer", "Sheet music loaded: $hasSheetMusic from file: ${file.absolutePath}")
+                        if (!hasSheetMusic) {
+                            Log.w("MidiPlayer", "Verovio failed to load XML file. File exists: ${file.exists()}, size: ${file.length()} bytes")
+                        }
+                    } ?: run {
+                        hasSheetMusic = false
+                        Log.w("MidiPlayer", "Failed to copy XML file to temp location")
+                    }
+                } catch (e: Exception) {
+                    Log.e("MidiPlayer", "Error loading sheet music", e)
+                    hasSheetMusic = false
+                }
+            } else {
+                hasSheetMusic = false
+                Log.d("MidiPlayer", "No matching XML file found for ${midiFile.name}")
+            }
+            sheetMusicLoading = false
+        } catch (e: Exception) {
+            Log.e("MidiPlayer", "Error checking for sheet music", e)
+            hasSheetMusic = false
+            sheetMusicLoading = false
         }
     }
 
@@ -927,6 +1026,30 @@ fun MidiPlayerScreen(
                                     )
                                 }
 
+                                // Sheet music toggle button - always show
+                                // If no sheet music, clicking opens file picker to select XML file
+                                IconButton(
+                                    onClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        if (hasSheetMusic) {
+                                            showSheetMusic = !showSheetMusic
+                                        } else {
+                                            // Open file picker to manually select XML file
+                                            xmlFileLauncher.launch(arrayOf("application/xml", "text/xml", "*/*"))
+                                        }
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.LibraryMusic,
+                                        contentDescription = if (hasSheetMusic) "Sheet Music" else "Select XML file for sheet music",
+                                        tint = when {
+                                            !hasSheetMusic -> Color.White.copy(alpha = 0.5f) // Slightly visible to indicate it's clickable
+                                            showSheetMusic -> MaterialTheme.colorScheme.primary
+                                            else -> Color.White.copy(alpha = 0.6f)
+                                        }
+                                    )
+                                }
+
                                 // Restart button
                                 IconButton(
                                     onClick = {
@@ -1009,27 +1132,36 @@ fun MidiPlayerScreen(
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                NoteFallVisualizer(
-                    modifier = Modifier.fillMaxSize(),
-                    notes = when (currentHandMode) {
-                        HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
-                        HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
-                        HandMode.BOTH_HANDS -> midiNotes
-                    },
-                    currentTimeMs = currentTimeMs,
-                    isPlaying = isPlaybackActive,
-                    bpm = currentBpm ?: 120,
-                    pianoConfig = pianoConfig!!,
-                    isPreLoading = isPreLoading,
-                    playbackManager = playbackManager,
-                    correctlyPlayedNotes = correctlyPlayedNotes,
-                    pressedKeys = pressedKeys,
-                    settings = settings, // Pass settings to visualizer
-                    onNoteProcessed = {
-                        // Make sure we're tracking processed notes
-                        totalNotesPlayed++
-                    }
-                )
+                if (showSheetMusic && hasSheetMusic) {
+                    // Show sheet music view
+                    SheetMusicView(
+                        viewModel = sheetMusicViewModel,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                } else {
+                    // Show note fall visualizer
+                    NoteFallVisualizer(
+                        modifier = Modifier.fillMaxSize(),
+                        notes = when (currentHandMode) {
+                            HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
+                            HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
+                            HandMode.BOTH_HANDS -> midiNotes
+                        },
+                        currentTimeMs = currentTimeMs,
+                        isPlaying = isPlaybackActive,
+                        bpm = currentBpm ?: 120,
+                        pianoConfig = pianoConfig!!,
+                        isPreLoading = isPreLoading,
+                        playbackManager = playbackManager,
+                        correctlyPlayedNotes = correctlyPlayedNotes,
+                        pressedKeys = pressedKeys,
+                        settings = settings, // Pass settings to visualizer
+                        onNoteProcessed = {
+                            // Make sure we're tracking processed notes
+                            totalNotesPlayed++
+                        }
+                    )
+                }
 
                 if (showScoreDialog) {
                     val sessionDurationMs = System.currentTimeMillis() - sessionStartTimeMs

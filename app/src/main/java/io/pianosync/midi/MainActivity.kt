@@ -37,6 +37,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Load Verovio native library
+        try {
+            System.loadLibrary("verovio-android")
+        } catch (e: UnsatisfiedLinkError) {
+            android.util.Log.e("MainActivity", "Failed to load Verovio native library", e)
+            // Continue anyway - sheet music feature will be unavailable
+        }
+
         // Initialize MIDI manager at activity level
         midiManager = MidiConnectionManager.getInstance(applicationContext)
         midiManager.initialize()
