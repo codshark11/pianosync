@@ -59,7 +59,7 @@ fun NoteFallVisualizer(
     val configuration = LocalConfiguration.current
 
     // Use settings for timing values
-    val PLAYBACK_OFFSET_MS = settings.playbackOffsetMs
+    // Note: playbackOffsetMs is not used here - timing is unified through MidiPlaybackManager
     val CORRECT_NOTE_WINDOW = settings.difficultyLevel.correctNoteWindowMs
 
     val noteHeight = 16.dp
@@ -99,11 +99,9 @@ fun NoteFallVisualizer(
     // Note: currentTimeMs and noteTime are both at original BPM scale (same as SheetMusicView)
     fun timeToYPosition(noteTime: Long): Float {
         // Both noteTime and currentTimeMs are at original BPM scale, so compare directly
-        // Add the fixed offset to compensate for the consistent delay
-        val adjustedNoteTime = noteTime + PLAYBACK_OFFSET_MS
-
+        // Use unified timing system - no offset needed as timing is handled by MidiPlaybackManager
         // Calculate position based on time difference to current playback time
-        val timeDiff = adjustedNoteTime - currentTimeMs
+        val timeDiff = noteTime - currentTimeMs
         val pixelsPerMs = playLinePosition.value / futureTimeWindow.toFloat()
 
         return when {
@@ -217,13 +215,10 @@ fun NoteFallVisualizer(
         if (isPlaying) {
             visibleNotes.forEach { note ->
                 // Both currentTimeMs and note times are at original BPM scale (same as SheetMusicView)
-                // Add offset for consistency
-                val adjustedStartTime = note.startTime + PLAYBACK_OFFSET_MS
-                val adjustedEndTime = note.startTime + note.duration + PLAYBACK_OFFSET_MS
-
+                // Use unified timing system - compare directly without offset
                 // Check if note is crossing the play line
-                if (adjustedStartTime <= currentTimeMs &&
-                    adjustedEndTime > currentTimeMs - 100) {
+                if (note.startTime <= currentTimeMs &&
+                    note.startTime + note.duration > currentTimeMs - 100) {
                     playbackManager.processNoteAtPlayLine(note, currentTimeMs)
                 }
             }
@@ -286,8 +281,8 @@ fun NoteFallVisualizer(
                     // Find the current measure based on currentTimeMs
                     // currentTimeMs is at original BPM scale (same as SheetMusicView)
                     // Both currentTimeMs and measure lines are at original BPM scale, so compare directly
-                    val adjustedCurrentTime = currentTimeMs - PLAYBACK_OFFSET_MS
-                    val currentMeasure = floor((adjustedCurrentTime / measureDurationMsAtOriginalBpm.toFloat())).toInt()
+                    // Use unified timing system - no offset needed
+                    val currentMeasure = floor((currentTimeMs / measureDurationMsAtOriginalBpm.toFloat())).toInt()
                     
                     // Generate measure lines for visible range (current measure and next 2 measures)
                     val startMeasure = (currentMeasure - 1).coerceAtLeast(0)
