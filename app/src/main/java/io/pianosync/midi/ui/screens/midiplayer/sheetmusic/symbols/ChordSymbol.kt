@@ -240,6 +240,48 @@ class ChordSymbol(
             }
         }
 
+        // Draw horizontal lines (ledger lines) for notes outside the staff
+        // Matching MidiSheetMusic-Android DrawNotes lines 594-619
+        notePositions.forEachIndexed { index, pos ->
+            // Calculate xnote (left edge of note) - matching reference: LineSpace/4 or LineSpace/4 + NoteWidth
+            val baseX = LineSpace / 4f
+            val xnote = if (leftsides[index]) baseX else baseX + NoteWidth
+            
+            // For notes above the staff
+            val top = topStaff.add(1)  // One note above the top staff line
+            val distAbove = pos.whiteNote.dist(top)
+            var y = ytop - LineWidth
+            
+            if (distAbove >= 2) {
+                for (i in 2..distAbove step 2) {
+                    y -= NoteHeight
+                    drawLine(
+                        color = noteColor,
+                        start = Offset(xnote - LineSpace / 4, y),
+                        end = Offset(xnote + NoteWidth + LineSpace / 4, y),
+                        strokeWidth = LineWidth
+                    )
+                }
+            }
+            
+            // For notes below the staff
+            val bottom = top.add(-8)  // Bottom of the staff (8 white notes below top)
+            val distBelow = bottom.dist(pos.whiteNote)
+            y = ytop + (LineSpace + LineWidth) * 4 - 1
+            
+            if (distBelow >= 2) {
+                for (i in 2..distBelow step 2) {
+                    y += NoteHeight
+                    drawLine(
+                        color = noteColor,
+                        start = Offset(xnote - LineSpace / 4, y),
+                        end = Offset(xnote + NoteWidth + LineSpace / 4, y),
+                        strokeWidth = LineWidth
+                    )
+                }
+            }
+        }
+
         // Draw stem (matching MidiSheetMusic-Android Stem.Draw)
         if (noteDuration == NoteDuration.Whole || notePositions.isEmpty()) return
 
