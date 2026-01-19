@@ -43,11 +43,15 @@ fun EnhancedPianoLayout(
 ) {
     val totalWhiteKeys = (pianoConfig.minNote..pianoConfig.maxNote)
         .count { isWhiteKey(it) }
-    val totalWidth = pianoConfig.keyWidth.dp * totalWhiteKeys
+    // Calculate Box width to exactly fit keys
+    // Box width = keyWidth * whiteKeyCount + 8dp (for padding)
+    // After padding, Row will have exactly keyWidth * whiteKeyCount space for keys
+    val keyboardPadding = 8f // 4dp on each side
+    val totalWidth = (pianoConfig.keyWidth * totalWhiteKeys + keyboardPadding).dp
 
     Box(
         modifier = modifier
-            .width(totalWidth)
+            .width(totalWidth) // Fixed width to exactly fit the keys
             .background(
                 brush = androidx.compose.ui.graphics.Brush.verticalGradient(
                     colors = listOf(
@@ -62,7 +66,9 @@ fun EnhancedPianoLayout(
     ) {
         // White keys
         Row(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxHeight() // Fill height but not width - let it size to content
+                .width((pianoConfig.keyWidth * totalWhiteKeys).dp), // Exact width for keys
             horizontalArrangement = Arrangement.Start
         ) {
             (pianoConfig.minNote..pianoConfig.maxNote).forEach { note ->

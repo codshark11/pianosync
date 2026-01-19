@@ -383,9 +383,22 @@ fun MidiPlayerScreen(
                     sessionStartTimeMs = System.currentTimeMillis()
 
                     // Calculate key width based on available screen width
+                    // The keyboard Box structure:
+                    //   - Outer container: fillMaxWidth() -> fills (screenWidth - horizontalPadding)
+                    //   - Inner Box: width = keyWidth * whiteKeyCount + 8dp (to account for padding)
+                    //   - Border: 2dp on each side (drawn on edge, doesn't change measured size)
+                    //   - Padding: 4dp on each side (reduces Row's available space by 8dp)
+                    // The Row inside needs space for: keyWidth * whiteKeyCount (one keyWidth per key)
+                    // After padding, Row has: (keyWidth * whiteKeyCount + 8dp) - 8dp = keyWidth * whiteKeyCount ✓
+                    // To fit within screen: keyWidth * whiteKeyCount + 8dp <= screenWidth - horizontalPadding
+                    // Therefore: keyWidth = (screenWidth - horizontalPadding - 8dp) / whiteKeyCount
                     val whiteKeyCount = (paddedMin..paddedMax).count { isWhiteKey(it) }
-                    val availableWidth = screenWidth - horizontalPadding
-                    val keyWidth = (availableWidth.toFloat() / whiteKeyCount).coerceIn(20f, 60f)
+                    val keyboardInternalPadding = 8f // 4dp on each side inside Box (reduces Row space)
+                    // Border doesn't affect measured size, so we don't subtract it
+                    val availableWidthForBox = screenWidth - horizontalPadding
+                    val availableWidthForKeys = availableWidthForBox - keyboardInternalPadding
+                    val calculatedKeyWidth = availableWidthForKeys.toFloat() / whiteKeyCount
+                    val keyWidth = calculatedKeyWidth.coerceIn(20f, 60f)
 
                     pianoConfig = PianoConfiguration(
                         minNote = paddedMin,
