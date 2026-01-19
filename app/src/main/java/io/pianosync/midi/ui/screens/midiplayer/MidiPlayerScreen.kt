@@ -109,6 +109,50 @@ fun MidiPlayerScreen(
     val loopStartMs by playbackManager.loopStartMs.collectAsState()
     val loopEndMs by playbackManager.loopEndMs.collectAsState()
     val currentTimeMs by playbackManager.currentTimeMs.collectAsState()
+    
+    // Calculate adjusted duration based on current BPM
+    val adjustedSongDurationMs = remember(songDurationMs, currentBpm, midiFile.originalBpm) {
+        val bpm = currentBpm
+        val origBpm = midiFile.originalBpm
+        if (songDurationMs > 0 && origBpm != null && bpm != null) {
+            val speedRatio = bpm.toFloat() / origBpm.toFloat()
+            (songDurationMs / speedRatio).toLong()
+        } else {
+            songDurationMs
+        }
+    }
+    // Calculate adjusted loop points for display (loop points are at original BPM scale)
+    val adjustedLoopStartMs = remember(loopStartMs, currentBpm, midiFile.originalBpm) {
+        val bpm = currentBpm
+        val origBpm = midiFile.originalBpm
+        if (loopStartMs > 0 && origBpm != null && bpm != null) {
+            val speedRatio = bpm.toFloat() / origBpm.toFloat()
+            (loopStartMs / speedRatio).toLong()
+        } else {
+            loopStartMs
+        }
+    }
+    val adjustedLoopEndMs = remember(loopEndMs, currentBpm, midiFile.originalBpm) {
+        val bpm = currentBpm
+        val origBpm = midiFile.originalBpm
+        if (loopEndMs > 0 && origBpm != null && bpm != null) {
+            val speedRatio = bpm.toFloat() / origBpm.toFloat()
+            (loopEndMs / speedRatio).toLong()
+        } else {
+            loopEndMs
+        }
+    }
+    // Adjust currentTimeMs for display (currentTimeMs is at original BPM scale)
+    val adjustedCurrentTimeMs = remember(currentTimeMs, currentBpm, midiFile.originalBpm) {
+        val bpm = currentBpm
+        val origBpm = midiFile.originalBpm
+        if (currentTimeMs > 0 && origBpm != null && bpm != null) {
+            val speedRatio = bpm.toFloat() / origBpm.toFloat()
+            (currentTimeMs / speedRatio).toLong()
+        } else {
+            currentTimeMs
+        }
+    }
     val metronomeManager = remember { MetronomeManager(context) }
     var metronomeEnabled by remember { mutableStateOf(false) }
     val currentMetronomeBeat by metronomeManager.currentBeat.collectAsState()
@@ -163,17 +207,16 @@ fun MidiPlayerScreen(
     // Map of actively playing notes (note number -> isLeftHand) for piano key highlighting
     // These are notes that should be held down based on their duration
     // Show active notes even when paused (based on currentTimeMs)
-    val activePlayingNotes = remember(currentTimeMs, filteredNotes, isPreLoading, speedRatio, pianoConfig) {
+    // Note: currentTimeMs and note times are both at original BPM scale (same as SheetMusicView)
+    val activePlayingNotes = remember(currentTimeMs, filteredNotes, isPreLoading, pianoConfig) {
         val config = pianoConfig
         if (isPreLoading || config == null) {
             emptyMap<Int, Boolean>()
         } else {
             filteredNotes.filter { note ->
-                val notePlaybackTime = (note.startTime / speedRatio).toLong()
-                val noteEndTime = notePlaybackTime + (note.duration / speedRatio).toLong()
-                // Note is actively playing if current time is between start and end
-                // This works both when playing and when paused
-                currentTimeMs >= notePlaybackTime && currentTimeMs < noteEndTime &&
+                // Both currentTimeMs and note.startTime are at original BPM scale
+                // No conversion needed - compare directly (same approach as SheetMusicView)
+                currentTimeMs >= note.startTime && currentTimeMs < note.startTime + note.duration &&
                         note.note in config.minNote..config.maxNote
             }.associate { it.note to it.isLeftHand }
         }
@@ -181,15 +224,18 @@ fun MidiPlayerScreen(
     
     // Calculate upcoming notes (notes approaching the play line within 200ms)
     // Only show upcoming notes when actually playing (not when paused)
-    val upcomingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, speedRatio, pianoConfig) {
+    // Note: currentTimeMs and note times are both at original BPM scale (same as SheetMusicView)
+    val upcomingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, pianoConfig) {
         val config = pianoConfig // Store in local variable to avoid smart cast issue
         if (!isPlaybackActive || isPreLoading || config == null) {
             emptyMap<Int, Boolean>()
         } else {
-            val upcomingTimeWindow = 200L // Show keys 200ms before they need to be pressed
+            // Convert upcoming time window from current BPM scale to original BPM scale
+            // If playing at 1.5x speed, 200ms at current BPM = 300ms at original BPM
+            val upcomingTimeWindow = (200L * speedRatio).toLong()
             filteredNotes.filter { note ->
-                val notePlaybackTime = (note.startTime / speedRatio).toLong()
-                val timeDiff = notePlaybackTime - currentTimeMs
+                // Both currentTimeMs and note.startTime are at original BPM scale
+                val timeDiff = note.startTime - currentTimeMs
                 // Note is upcoming if it's in the future but within the time window
                 timeDiff > 0 && timeDiff <= upcomingTimeWindow &&
                         note.note in config.minNote..config.maxNote
@@ -240,14 +286,13 @@ fun MidiPlayerScreen(
     LaunchedEffect(Unit) {
         while (true) {
             if (isPlaybackActive && midiNotes.isNotEmpty() && !isNearEndOfSong && !endOfSongTimerStarted) {
-                // Calculate the total estimated song duration
+                // Calculate the total song duration at original BPM scale
+                // Both currentTimeMs and lastNoteTime are at original BPM scale
                 val lastNoteTime = midiNotes.maxOf { it.startTime + it.duration }
-                val speedRatio = (currentBpm ?: 120).toFloat() / (midiFile.originalBpm ?: 120).toFloat()
-                val estimatedDuration = lastNoteTime / speedRatio
 
-                if (currentTimeMs > estimatedDuration * 0.999) {
+                if (currentTimeMs >= lastNoteTime * 0.999) {
                     isNearEndOfSong = true
-                    Log.d("MidiPlayer", "Near end of song detected at $currentTimeMs / $estimatedDuration")
+                    Log.d("MidiPlayer", "Near end of song detected at $currentTimeMs / $lastNoteTime")
                 }
 
             }
@@ -835,30 +880,51 @@ fun MidiPlayerScreen(
                 modifier = Modifier
                     .fillMaxWidth(),
                 isLoopEnabled = isLoopEnabled,
-                loopStartMs = loopStartMs,
-                loopEndMs = loopEndMs,
-                songDurationMs = songDurationMs,
-                currentTimeMs = currentTimeMs,
+                loopStartMs = adjustedLoopStartMs,
+                loopEndMs = adjustedLoopEndMs,
+                songDurationMs = adjustedSongDurationMs,
+                currentTimeMs = adjustedCurrentTimeMs,
                 onLoopToggled = { enabled ->
                     playbackManager.toggleLoopMode(enabled)
                 },
                 onSetLoopStart = {
                     Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
-                    val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
-                    playbackManager.setLoopPoints(currentTimeMs, endPoint)
+                    // Convert adjusted position back to original scale for loop points
+                    val bpm = currentBpm
+                    val origBpm = midiFile.originalBpm
+                    val speedRatio = if (origBpm != null && bpm != null) {
+                        bpm.toFloat() / origBpm.toFloat()
+                    } else 1f
+                    val originalScalePosition = (adjustedCurrentTimeMs * speedRatio).toLong()
+                    val endPoint = if (loopEndMs <= originalScalePosition) songDurationMs else loopEndMs
+                    playbackManager.setLoopPoints(originalScalePosition, endPoint)
                     playbackManager.toggleLoopMode(true)
                 },
                 onSetLoopEnd = {
+                    // Convert adjusted position back to original scale for loop points
+                    val bpm = currentBpm
+                    val origBpm = midiFile.originalBpm
+                    val speedRatio = if (origBpm != null && bpm != null) {
+                        bpm.toFloat() / origBpm.toFloat()
+                    } else 1f
+                    val originalScalePosition = (adjustedCurrentTimeMs * speedRatio).toLong()
                     // Only set end if it's after start
-                    if (currentTimeMs > loopStartMs) {
-                        Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
-                        playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
+                    if (originalScalePosition > loopStartMs) {
+                        Log.d("MidiPlayer", "Setting loop end to current time: $originalScalePosition")
+                        playbackManager.setLoopPoints(loopStartMs, originalScalePosition)
                         playbackManager.toggleLoopMode(true)
                     }
                 },
                 onSeekTo = { position ->
-                    Log.d("MidiPlayer", "Seeking to position: $position")
-                    playbackManager.seekTo(position)
+                    // Convert adjusted position back to original scale for seeking
+                    val bpm = currentBpm
+                    val origBpm = midiFile.originalBpm
+                    val speedRatio = if (origBpm != null && bpm != null) {
+                        bpm.toFloat() / origBpm.toFloat()
+                    } else 1f
+                    val originalScalePosition = (position * speedRatio).toLong()
+                    Log.d("MidiPlayer", "Seeking to position: $originalScalePosition (adjusted: $position)")
+                    playbackManager.seekTo(originalScalePosition)
                 }
             )
 
