@@ -482,15 +482,17 @@ fun MidiPlayerScreen(
     
     // Map of actively playing notes (note number -> isLeftHand) for piano key highlighting
     // These are notes that should be held down based on their duration
-    val activePlayingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, speedRatio, pianoConfig) {
+    // Show active notes even when paused (based on currentTimeMs)
+    val activePlayingNotes = remember(currentTimeMs, filteredNotes, isPreLoading, speedRatio, pianoConfig) {
         val config = pianoConfig
-        if (!isPlaybackActive || isPreLoading || config == null) {
+        if (isPreLoading || config == null) {
             emptyMap<Int, Boolean>()
         } else {
             filteredNotes.filter { note ->
                 val notePlaybackTime = (note.startTime / speedRatio).toLong()
                 val noteEndTime = notePlaybackTime + (note.duration / speedRatio).toLong()
                 // Note is actively playing if current time is between start and end
+                // This works both when playing and when paused
                 currentTimeMs >= notePlaybackTime && currentTimeMs < noteEndTime &&
                         note.note in config.minNote..config.maxNote
             }.associate { it.note to it.isLeftHand }
@@ -498,6 +500,7 @@ fun MidiPlayerScreen(
     }
     
     // Calculate upcoming notes (notes approaching the play line within 200ms)
+    // Only show upcoming notes when actually playing (not when paused)
     val upcomingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, speedRatio, pianoConfig) {
         val config = pianoConfig // Store in local variable to avoid smart cast issue
         if (!isPlaybackActive || isPreLoading || config == null) {
@@ -1700,7 +1703,14 @@ fun MidiPlayerScreen(
                     upcomingNotes = upcomingNotes,
                     syncedNotes = emptySet(),
                     showKeyNames = settings.difficultyLevel.showKeyNames && settings.showKeyNames,
-                    onNotePressed = { /* Optional: handle virtual key presses */ }
+                    onNotePressed = { note ->
+                        // Send note on when virtual key is pressed
+                        midiConnectionManager.sendNoteOn(note, 64)
+                    },
+                    onNoteReleased = { note ->
+                        // Send note off when virtual key is released
+                        midiConnectionManager.sendNoteOff(note)
+                    }
                 )
             }
         }
@@ -1778,7 +1788,8 @@ fun EnhancedPianoLayout(
     upcomingNotes: Map<Int, Boolean> = emptyMap(),
     syncedNotes: Set<Int>,
     showKeyNames: Boolean = false,
-    onNotePressed: (Int) -> Unit
+    onNotePressed: (Int) -> Unit,
+    onNoteReleased: ((Int) -> Unit)? = null
 ) {
     val totalWhiteKeys = (pianoConfig.minNote..pianoConfig.maxNote)
         .count { isWhiteKey(it) }
@@ -1809,7 +1820,8 @@ fun EnhancedPianoLayout(
                         isUpcoming = note in upcomingNotes.keys && note !in activePlayingNotes.keys,
                         isUpcomingLeftHand = upcomingNotes[note] == true,
                         showKeyName = showKeyNames,
-                        onPressed = onNotePressed
+                        onPressed = onNotePressed,
+                        onReleased = onNoteReleased
                     )
                 }
             }
@@ -1833,6 +1845,7 @@ fun EnhancedPianoLayout(
                         isUpcomingLeftHand = upcomingNotes[note] == true,
                         showKeyName = showKeyNames,
                         onPressed = onNotePressed,
+                        onReleased = onNoteReleased,
                         keyWidth = pianoConfig.keyWidth
                     )
                 }
@@ -1852,7 +1865,8 @@ fun EnhancedWhiteKey(
     isUpcoming: Boolean = false,
     isUpcomingLeftHand: Boolean = false,
     showKeyName: Boolean = false,
-    onPressed: (Int) -> Unit
+    onPressed: (Int) -> Unit,
+    onReleased: ((Int) -> Unit)? = null
 ) {
     var isVirtuallyPressed by remember { mutableStateOf(false) }
 
@@ -1914,6 +1928,7 @@ fun EnhancedWhiteKey(
                         onPressed(note)
                         tryAwaitRelease()
                         isVirtuallyPressed = false
+                        onReleased?.invoke(note)
                     }
                 )
             },
@@ -1944,6 +1959,7 @@ fun EnhancedBlackKey(
     isUpcomingLeftHand: Boolean = false,
     showKeyName: Boolean = false,
     onPressed: (Int) -> Unit,
+    onReleased: ((Int) -> Unit)? = null,
     keyWidth: Float = 0f // Add keyWidth parameter
 ) {
     var isVirtuallyPressed by remember { mutableStateOf(false) }
@@ -2009,6 +2025,7 @@ fun EnhancedBlackKey(
                         onPressed(note)
                         tryAwaitRelease()
                         isVirtuallyPressed = false
+                        onReleased?.invoke(note)
                     }
                 )
             },

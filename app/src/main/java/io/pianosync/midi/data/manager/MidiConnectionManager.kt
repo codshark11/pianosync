@@ -22,6 +22,9 @@ class MidiConnectionManager private constructor(private val context: Context) {
 
     // Add recording manager
     private val recordingManager = MidiRecordingManager()
+    
+    // Add synthesizer manager for generating sounds
+    private val synthesizerManager = MidiSynthesizerManager.getInstance(context)
 
     private val _isConnected = MutableStateFlow(false)
     val isConnected: StateFlow<Boolean> = _isConnected.asStateFlow()
@@ -55,6 +58,9 @@ class MidiConnectionManager private constructor(private val context: Context) {
             _errorMessage.value = "MIDI not supported on this device"
             return
         }
+
+        // Initialize synthesizer for key press sounds
+        synthesizerManager.initialize()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && deviceCallback != null) {
             midiManager.registerDeviceCallback(
@@ -130,14 +136,19 @@ class MidiConnectionManager private constructor(private val context: Context) {
                                 if (velocity > 0) {
                                     _pressedKeys.value = _pressedKeys.value + note
                                     _releasedKeys.value = _releasedKeys.value - note
+                                    // Play sound when key is pressed
+                                    synthesizerManager.noteOn(note, velocity, channel)
                                 } else { // Velocity 0 is treated as Note Off
                                     _pressedKeys.value = _pressedKeys.value - note
                                     _releasedKeys.value = _releasedKeys.value + note
+                                    synthesizerManager.noteOff(note, 0, channel)
                                 }
                             }
                             0x80 -> { // Note Off
                                 _pressedKeys.value = _pressedKeys.value - note
                                 _releasedKeys.value = _releasedKeys.value + note
+                                // Stop sound when key is released
+                                synthesizerManager.noteOff(note, 0, channel)
                             }
                         }
                     }
@@ -202,11 +213,45 @@ class MidiConnectionManager private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Send a note on event (for virtual keyboard presses)
+     * @param note MIDI note number (0-127)
+     * @param velocity Note velocity (0-127), default 64
+     */
+    fun sendNoteOn(note: Int, velocity: Int = 64) {
+        // Update pressed keys state
+        _pressedKeys.value = _pressedKeys.value + note
+        _releasedKeys.value = _releasedKeys.value - note
+        
+        // Play sound through synthesizer
+        synthesizerManager.noteOn(note, velocity)
+        
+        // Record the event if recording is active
+        recordingManager.recordMidiEvent(0x90, note, velocity, 0)
+    }
+
+    /**
+     * Send a note off event (for virtual keyboard releases)
+     * @param note MIDI note number (0-127)
+     */
+    fun sendNoteOff(note: Int) {
+        // Update pressed keys state
+        _pressedKeys.value = _pressedKeys.value - note
+        _releasedKeys.value = _releasedKeys.value + note
+        
+        // Stop sound through synthesizer
+        synthesizerManager.noteOff(note, 0)
+        
+        // Record the event if recording is active
+        recordingManager.recordMidiEvent(0x80, note, 0, 0)
+    }
+
     fun cleanup() {
         if (midiManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && deviceCallback != null) {
             midiManager.unregisterDeviceCallback(deviceCallback)
         }
         closeCurrentDevice()
+        synthesizerManager.cleanup()
     }
 
     companion object {
