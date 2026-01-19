@@ -46,6 +46,8 @@ import io.pianosync.midi.data.model.MidiFile
 import io.pianosync.midi.data.model.PerformanceRecord
 import io.pianosync.midi.data.model.PlayedNote
 import io.pianosync.midi.data.parser.MidiParser
+import io.pianosync.midi.data.parser.midi.MidiFile as ParsedMidiFile
+import io.pianosync.midi.ui.screens.midiplayer.components.TimeSignatureInfo
 import io.pianosync.midi.data.repository.MidiFileRepository
 import io.pianosync.midi.data.repository.MidiRecordingRepository
 import io.pianosync.midi.data.repository.PerformanceRepository
@@ -203,6 +205,7 @@ fun MidiPlayerScreen(
     var hasStartedPlaying by remember { mutableStateOf(false) }
     var isNearEndOfSong by remember { mutableStateOf(false) }
     var endOfSongTimerStarted by remember { mutableStateOf(false) }
+    var timeSignatureInfo by remember { mutableStateOf<TimeSignatureInfo?>(null) }
 
     // Track which notes have passed the play line
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
@@ -342,13 +345,26 @@ fun MidiPlayerScreen(
         try {
             val uri = Uri.parse(midiFile.path)
             context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                // Parse MIDI file to get time signature
+                val midiBytes = inputStream.readBytes()
+                val parsedMidiFile = ParsedMidiFile(midiBytes, "")
+                val timeSig = parsedMidiFile.time
+                timeSignatureInfo = TimeSignatureInfo(
+                    numerator = timeSig.numerator,
+                    denominator = timeSig.denominator,
+                    quarter = timeSig.quarter,
+                    measure = timeSig.measure
+                )
+                
                 // Always parse with the original BPM to get correct absolute times
                 val originalBpm = midiFile.originalBpm ?: 120
-                val notes = MidiParser.parseMidiNotes(inputStream, originalBpm)
-                midiNotes = notes
+                // Re-parse notes (we need to read the stream again)
+                context.contentResolver.openInputStream(uri)?.use { notesInputStream ->
+                    val notes = MidiParser.parseMidiNotes(notesInputStream, originalBpm)
+                    midiNotes = notes
 
-                // Calculate song duration based on the last note end time
-                if (notes.isNotEmpty()) {
+                    // Calculate song duration based on the last note end time
+                    if (notes.isNotEmpty()) {
                     val lastNoteEndTime = notes.maxOf { it.startTime + it.duration }
                     songDurationMs = lastNoteEndTime
                     Log.d("MidiPlayer", "Song duration calculated: $songDurationMs ms")
@@ -386,8 +402,9 @@ fun MidiPlayerScreen(
 
                 delay(100)
 
-                playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                isPreLoading = false
+                    playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                    isPreLoading = false
+                }
             }
         } catch (e: Exception) {
             Log.e("MidiPlayer", "Error loading MIDI file", e)
@@ -869,7 +886,8 @@ fun MidiPlayerScreen(
                         onNoteProcessed = {
                             // Make sure we're tracking processed notes
                             totalNotesPlayed++
-                        }
+                        },
+                        timeSignature = timeSignatureInfo
                     )
                 }
 

@@ -9,11 +9,20 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import io.pianosync.midi.data.manager.MidiPlaybackManager
 import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.ui.theme.highlightAccentColor
@@ -21,6 +30,15 @@ import io.pianosync.midi.ui.theme.leftHandNoteColor
 import io.pianosync.midi.ui.theme.rightHandNoteColor
 import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
+import kotlin.math.ceil
+import kotlin.math.floor
+
+data class TimeSignatureInfo(
+    val numerator: Int,
+    val denominator: Int,
+    val quarter: Int,  // pulses per quarter note
+    val measure: Int   // pulses per measure
+)
 
 @Composable
 fun NoteFallVisualizer(
@@ -35,7 +53,8 @@ fun NoteFallVisualizer(
     correctlyPlayedNotes: MutableState<Set<Int>>,
     pressedKeys: Set<Int>,
     settings: AppSettings,
-    onNoteProcessed: () -> Unit
+    onNoteProcessed: () -> Unit,
+    timeSignature: TimeSignatureInfo? = null
 ) {
     // Get device configuration
     val configuration = LocalConfiguration.current
@@ -45,11 +64,24 @@ fun NoteFallVisualizer(
     val CORRECT_NOTE_WINDOW = settings.difficultyLevel.correctNoteWindowMs
 
     val noteHeight = 16.dp
-    val futureTimeWindow = 8000L
     val pastTimeWindow = 2000L
     val topBarHeight = 64.dp
     val pianoKeyboardHeight = 120.dp
     val spacingAboveKeyboard = 4.dp // Small spacing between play line and keyboard
+    
+    // Calculate 2 measures duration in milliseconds
+    val twoMeasuresDurationMs = if (timeSignature != null && bpm > 0) {
+        // 1 measure in ms = (measure pulses / quarter pulses) * (60,000 ms/min / BPM)
+        // 2 measures = 2 * (measure / quarter) * (60,000 / BPM)
+        val measureDurationMs = (timeSignature.measure.toLong() * 60_000L) / (timeSignature.quarter.toLong() * bpm.toLong())
+        measureDurationMs * 2
+    } else {
+        // Fallback: assume 4/4 time at current BPM
+        // 4 beats per measure, each beat = 60,000 / BPM ms
+        (4 * 60_000L) / bpm.coerceAtLeast(1) * 2
+    }
+    
+    val futureTimeWindow = twoMeasuresDurationMs
     val visualizerHeight = (configuration.screenHeightDp).dp - topBarHeight
     val playLinePosition = visualizerHeight - pianoKeyboardHeight - spacingAboveKeyboard
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
@@ -264,6 +296,97 @@ fun NoteFallVisualizer(
                                     color = Color.White.copy(alpha = 0.12f)
                                 )
                         )
+                    }
+                }
+                
+                // Calculate measure boundaries and draw measure splitter lines
+                val measureLines = if (timeSignature != null && originalBpm > 0) {
+                    // Calculate measure duration in milliseconds at original BPM
+                    // Notes are stored in milliseconds at original BPM
+                    val measureDurationMsAtOriginalBpm = (timeSignature.measure.toLong() * 60_000L) / (timeSignature.quarter.toLong() * originalBpm.toLong())
+                    
+                    // Find the current measure based on currentTimeMs (accounting for playback offset and speed ratio)
+                    // We need to convert currentTimeMs back to original BPM domain to find the measure
+                    val adjustedCurrentTime = (currentTimeMs - PLAYBACK_OFFSET_MS) * speedRatio
+                    val currentMeasure = floor((adjustedCurrentTime / measureDurationMsAtOriginalBpm.toFloat())).toInt()
+                    
+                    // Generate measure lines for visible range (current measure and next 2 measures)
+                    val startMeasure = (currentMeasure - 1).coerceAtLeast(0)
+                    val endMeasure = currentMeasure + 3 // Show previous + current + 2 ahead
+                    
+                    (startMeasure..endMeasure).map { measureNum ->
+                        // Calculate the time for this measure start in original BPM domain (same as note times)
+                        val measureStartTimeMs = measureNum * measureDurationMsAtOriginalBpm
+                        measureNum to measureStartTimeMs
+                    }
+                } else {
+                    emptyList<Pair<Int, Long>>()
+                }
+                
+                // Draw measure splitter lines (draw before play line so they're visible)
+                measureLines.forEach { (measureNum, measureStartTimeMs) ->
+                    val lineY = timeToYPosition(measureStartTimeMs)
+                    
+                    // Only draw if line is within visible range (extend range to catch lines near edges)
+                    if (lineY >= -200f && lineY <= visualizerHeight.value + 200f) {
+                        // Draw the measure splitter line with 3D style - shadow and gradient for depth
+                        Box(
+                            modifier = Modifier
+                                .offset(y = lineY.dp)
+                                .width(totalWidth)
+                                .height(2.dp)
+                                .shadow(
+                                    elevation = 3.dp,
+                                    shape = RoundedCornerShape(1.dp)
+                                )
+                                .drawBehind {
+                                    // Draw a gradient to create 3D effect - lighter on top, darker on bottom
+                                    drawRect(
+                                        brush = Brush.verticalGradient(
+                                            colors = listOf(
+                                                Color.White.copy(alpha = 0.6f),
+                                                Color.White.copy(alpha = 0.4f),
+                                                Color.White.copy(alpha = 0.25f)
+                                            )
+                                        )
+                                    )
+                                }
+                        )
+                        
+                        // Display measure number just above the measure line with 3D text effect
+                        if (lineY >= -30f && lineY <= visualizerHeight.value + 30f) {
+                            // Create 3D text effect with shadow
+                            Box(
+                                modifier = Modifier
+                                    .offset(x = 4.dp, y = (lineY - 18).dp)
+                            ) {
+                                // Shadow layer (behind text)
+                                Text(
+                                    text = "$measureNum",
+                                    style = TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color.Black.copy(alpha = 0.4f),
+                                        fontWeight = FontWeight.Medium
+                                    ),
+                                    modifier = Modifier
+                                        .offset(x = 1.dp, y = 1.dp) // Slight offset for shadow
+                                )
+                                // Main text layer (on top)
+                                Text(
+                                    text = "$measureNum",
+                                    style = TextStyle(
+                                        fontSize = 12.sp,
+                                        color = Color.White.copy(alpha = 0.8f),
+                                        fontWeight = FontWeight.Bold
+                                    ),
+                                    modifier = Modifier
+                                        .graphicsLayer {
+                                            // Add subtle elevation
+                                            shadowElevation = 2f
+                                        }
+                                )
+                            }
+                        }
                     }
                 }
                 
