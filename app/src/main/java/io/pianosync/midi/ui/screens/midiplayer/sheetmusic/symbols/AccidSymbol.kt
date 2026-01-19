@@ -127,6 +127,7 @@ class AccidSymbol(
 
     /** Draw natural symbol. Matching MidiSheetMusic-Android DrawNatural. */
     private fun drawNatural(drawScope: DrawScope, color: Color, ynote: Float) {
+        /* Draw the two vertical lines */
         var ystart = ynote - LineSpace - LineWidth
         var yend = ynote + LineSpace + LineWidth
         var x = LineSpace / 2
@@ -136,6 +137,7 @@ class AccidSymbol(
         yend = ynote + 2 * LineSpace + LineWidth - LineSpace / 4
         drawScope.drawLine(color, Offset(x, ystart), Offset(x, yend), strokeWidth = 1f)
 
+        /* Draw the slightly upwards horizontal lines */
         val xstart = LineSpace / 2
         val xend = xstart + LineSpace - LineSpace / 4
         ystart = ynote + LineWidth

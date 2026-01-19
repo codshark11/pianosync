@@ -75,7 +75,7 @@ fun SheetMusicView(
     }
     
     // Align symbols across staffs so measures align vertically
-    val alignedSymbols = remember(trebleSymbols, bassSymbols, showMeasureNumbers) {
+    val alignedSymbols = remember(trebleSymbols, bassSymbols, showMeasureNumbers, ts) {
         val staffSymbols = mutableListOf<List<io.pianosync.midi.ui.screens.midiplayer.sheetmusic.symbols.MusicSymbol>>()
         if (trebleSymbols.isNotEmpty()) {
             staffSymbols.add(trebleSymbols)
@@ -88,7 +88,7 @@ fun SheetMusicView(
             staffSymbols.add(emptyList())
         }
 
-        SheetMusicConverter.alignSymbols(staffSymbols, showMeasures = showMeasureNumbers)
+        SheetMusicConverter.alignSymbols(staffSymbols, showMeasures = showMeasureNumbers, timeSignature = ts)
     }
     
     // Create staffs from aligned symbols. Show measure numbers only on the first staff.

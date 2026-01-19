@@ -434,9 +434,14 @@ object SheetMusicConverter {
      *
      * @param staffSymbols List of symbol lists, one per staff
      * @param showMeasures If true, add extra width to BarSymbols for measure numbers
+     * @param timeSignature Time signature to calculate measure boundaries
      * @return List of aligned symbol lists, one per staff
      */
-    fun alignSymbols(staffSymbols: List<List<MusicSymbol>>, showMeasures: Boolean = true): List<List<MusicSymbol>> {
+    fun alignSymbols(
+        staffSymbols: List<List<MusicSymbol>>, 
+        showMeasures: Boolean = true,
+        timeSignature: TimeSignature? = null
+    ): List<List<MusicSymbol>> {
         if (staffSymbols.isEmpty() || staffSymbols.all { it.isEmpty() }) {
             return staffSymbols
         }
@@ -456,6 +461,12 @@ object SheetMusicConverter {
                     bar.setWidth(bar.getWidth() + MeasureNumberExtraWidth)
                 }
             }
+        }
+
+        // Synchronize measure widths across all staffs
+        // This ensures that measures have the same width in both treble and bass staffs
+        if (timeSignature != null) {
+            return synchronizeMeasureWidths(aligned, timeSignature)
         }
 
         return aligned
@@ -531,5 +542,121 @@ object SheetMusicConverter {
         }
         
         return result
+    }
+    
+    /**
+     * Synchronize measure widths across all staffs so that measures align at barlines.
+     * This ensures that each measure has the same width in both treble and bass staffs.
+     * 
+     * Based on how MidiSheetMusic-Android ensures measure alignment.
+     * 
+     * @param alignedSymbols List of aligned symbol lists, one per staff
+     * @param timeSignature Time signature to calculate measure boundaries
+     * @return List of symbol lists with synchronized measure widths
+     */
+    private fun synchronizeMeasureWidths(
+        alignedSymbols: List<List<MusicSymbol>>,
+        timeSignature: TimeSignature
+    ): List<List<MusicSymbol>> {
+        if (alignedSymbols.isEmpty() || alignedSymbols.all { it.isEmpty() }) {
+            return alignedSymbols
+        }
+
+        // Calculate measure length in milliseconds (matching convertToSymbols)
+        val measureLengthMs = (timeSignature.measure.toLong() * timeSignature.tempo) / (1000L * timeSignature.quarter)
+        if (measureLengthMs <= 0) {
+            return alignedSymbols
+        }
+
+        // Group symbols by measure for each staff
+        val measureGroups = alignedSymbols.map { symbols ->
+            groupSymbolsByMeasure(symbols, measureLengthMs)
+        }
+
+        // Calculate maximum width for each measure across all staffs
+        val maxMeasureWidths = mutableMapOf<Int, Float>()
+        measureGroups.forEach { staffMeasures ->
+            staffMeasures.forEach { (measureNum, symbols) ->
+                val measureWidth = symbols.sumOf { it.getWidth().toDouble() }.toFloat()
+                val currentMax = maxMeasureWidths[measureNum] ?: 0f
+                if (measureWidth > currentMax) {
+                    maxMeasureWidths[measureNum] = measureWidth
+                }
+            }
+        }
+
+        // Adjust widths within each measure to match the maximum width
+        // We modify symbols in place, so we can return the original lists
+        alignedSymbols.forEachIndexed { staffIndex, symbols ->
+            val staffMeasures = measureGroups[staffIndex]
+
+            // Process each measure
+            staffMeasures.forEach { (measureNum, measureSymbols) ->
+                val currentMeasureWidth = measureSymbols.sumOf { it.getWidth().toDouble() }.toFloat()
+                val targetMeasureWidth = maxMeasureWidths[measureNum] ?: currentMeasureWidth
+                val extraWidth = targetMeasureWidth - currentMeasureWidth
+
+                // Distribute extra width proportionally among non-bar symbols in the measure
+                if (extraWidth > 0 && measureSymbols.isNotEmpty()) {
+                    val nonBarSymbols = measureSymbols.filter { it !is BarSymbol }
+                    if (nonBarSymbols.isNotEmpty()) {
+                        val totalNonBarWidth = nonBarSymbols.sumOf { it.getWidth().toDouble() }.toFloat()
+                        if (totalNonBarWidth > 0) {
+                            // Distribute proportionally based on current width
+                            nonBarSymbols.forEach { symbol ->
+                                val proportion = symbol.getWidth() / totalNonBarWidth
+                                val additionalWidth = extraWidth * proportion
+                                symbol.setWidth(symbol.getWidth() + additionalWidth)
+                            }
+                        } else {
+                            // If all symbols are bars, distribute evenly among all symbols
+                            val widthPerSymbol = extraWidth / measureSymbols.size
+                            measureSymbols.forEach { symbol ->
+                                symbol.setWidth(symbol.getWidth() + widthPerSymbol)
+                            }
+                        }
+                    } else {
+                        // All symbols are bars, distribute evenly
+                        val widthPerSymbol = extraWidth / measureSymbols.size
+                        measureSymbols.forEach { symbol ->
+                            symbol.setWidth(symbol.getWidth() + widthPerSymbol)
+                        }
+                    }
+                }
+            }
+        }
+
+        return alignedSymbols
+    }
+
+    /**
+     * Group symbols by measure number.
+     * Returns a map of measure number -> list of symbols in that measure.
+     * 
+     * A measure includes all symbols from one barline (inclusive) to the next barline (exclusive).
+     * Header symbols (clef, time sig) are included in measure 0.
+     */
+    private fun groupSymbolsByMeasure(
+        symbols: List<MusicSymbol>,
+        measureLengthMs: Long
+    ): Map<Int, List<MusicSymbol>> {
+        val measureGroups = mutableMapOf<Int, MutableList<MusicSymbol>>()
+
+        symbols.forEach { symbol ->
+            val startTime = symbol.getStartTime()
+            
+            // Header symbols (clef, time sig) go to measure 0
+            val measureNum = if (startTime < 0) {
+                0
+            } else {
+                // Calculate which measure this symbol belongs to based on its start time
+                (startTime / measureLengthMs).toInt()
+            }
+            
+            // Add symbol to the appropriate measure
+            measureGroups.getOrPut(measureNum) { mutableListOf() }.add(symbol)
+        }
+
+        return measureGroups
     }
 }
