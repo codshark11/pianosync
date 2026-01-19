@@ -31,15 +31,22 @@ fun calculateNotePosition(
         // Position black key in the gap between white keys
         // White keys have 1dp horizontal padding on each side
         // Find the previous white key position
-        val prevWhiteKey = (note - 1 downTo minNote).first { isWhiteKey(it) }
-        val whiteKeysBeforePrev = (minNote until prevWhiteKey).count { isWhiteKey(it) }
+        val prevWhiteKey = (note - 1 downTo minNote).firstOrNull { isWhiteKey(it) }
         
-        // The previous white key ends at: (whiteKeysBeforePrev * keyWidth + keyWidth - 1dp)
-        // The next white key starts at: ((whiteKeysBeforePrev + 1) * keyWidth + 1dp)
-        // Center of gap is between these two points
-        val prevEnd = (whiteKeysBeforePrev * keyWidth) + keyWidth - 1f
-        val nextStart = ((whiteKeysBeforePrev + 1) * keyWidth) + 1f
-        (prevEnd + nextStart) / 2f
+        if (prevWhiteKey == null) {
+            // No white key before this black key - position it at the start
+            // Use a small offset to account for padding
+            1f
+        } else {
+            val whiteKeysBeforePrev = (minNote until prevWhiteKey).count { isWhiteKey(it) }
+            
+            // The previous white key ends at: (whiteKeysBeforePrev * keyWidth + keyWidth - 1dp)
+            // The next white key starts at: ((whiteKeysBeforePrev + 1) * keyWidth + 1dp)
+            // Center of gap is between these two points
+            val prevEnd = (whiteKeysBeforePrev * keyWidth) + keyWidth - 1f
+            val nextStart = ((whiteKeysBeforePrev + 1) * keyWidth) + 1f
+            (prevEnd + nextStart) / 2f
+        }
     } else {
         whiteKeysBefore * keyWidth
     }
