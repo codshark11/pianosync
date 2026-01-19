@@ -762,6 +762,7 @@ fun MidiPlayerScreen(
             .fillMaxSize()
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
+            // Top app bar
             Box(
                 modifier = Modifier
                     .height(64.dp)
@@ -1150,6 +1151,40 @@ fun MidiPlayerScreen(
                     )
             }
 
+            // Loop control - positioned above sheet music to avoid overlap
+            LoopControl(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                isLoopEnabled = isLoopEnabled,
+                loopStartMs = loopStartMs,
+                loopEndMs = loopEndMs,
+                songDurationMs = songDurationMs,
+                currentTimeMs = currentTimeMs,
+                onLoopToggled = { enabled ->
+                    playbackManager.toggleLoopMode(enabled)
+                },
+                onSetLoopStart = {
+                    Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
+                    val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
+                    playbackManager.setLoopPoints(currentTimeMs, endPoint)
+                    playbackManager.toggleLoopMode(true)
+                },
+                onSetLoopEnd = {
+                    // Only set end if it's after start
+                    if (currentTimeMs > loopStartMs) {
+                        Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
+                        playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
+                        playbackManager.toggleLoopMode(true)
+                    }
+                },
+                onSeekTo = { position ->
+                    Log.d("MidiPlayer", "Seeking to position: $position")
+                    playbackManager.seekTo(position)
+                }
+            )
+
+            // Sheet music or note fall visualizer container
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -1185,40 +1220,6 @@ fun MidiPlayerScreen(
                         }
                     )
                 }
-
-                // Progress bar - overlaid on top of falling notes container
-                LoopControl(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .align(Alignment.TopCenter)
-                        .padding(horizontal = 8.dp, vertical = 8.dp),
-                    isLoopEnabled = isLoopEnabled,
-                    loopStartMs = loopStartMs,
-                    loopEndMs = loopEndMs,
-                    songDurationMs = songDurationMs,
-                    currentTimeMs = currentTimeMs,
-                    onLoopToggled = { enabled ->
-                        playbackManager.toggleLoopMode(enabled)
-                    },
-                    onSetLoopStart = {
-                        Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
-                        val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
-                        playbackManager.setLoopPoints(currentTimeMs, endPoint)
-                        playbackManager.toggleLoopMode(true)
-                    },
-                    onSetLoopEnd = {
-                        // Only set end if it's after start
-                        if (currentTimeMs > loopStartMs) {
-                            Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
-                            playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
-                            playbackManager.toggleLoopMode(true)
-                        }
-                    },
-                    onSeekTo = { position ->
-                        Log.d("MidiPlayer", "Seeking to position: $position")
-                        playbackManager.seekTo(position)
-                    }
-                )
 
                 if (showScoreDialog) {
                     val sessionDurationMs = System.currentTimeMillis() - sessionStartTimeMs

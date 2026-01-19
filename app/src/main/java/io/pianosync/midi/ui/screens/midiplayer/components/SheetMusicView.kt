@@ -34,17 +34,18 @@ fun SheetMusicView(
         sheetMusicMidiFile = MidiFileConverter.convertToSheetMusicMidiFile(context, midiFile)
     }
 
-    // Initialize SheetMusic view when we have the converted MidiFile
-    LaunchedEffect(sheetMusicMidiFile) {
-        if (sheetMusicMidiFile != null) {
-            // Create default options
-            val options = MidiOptions(sheetMusicMidiFile!!)
-            options.showPiano = false // Don't show piano in sheet music view
-            options.scrollVert = false // Horizontal scrolling
-            
-            // The SheetMusic view will be created in AndroidView
-        }
-    }
+            // Initialize SheetMusic view when we have the converted MidiFile
+            LaunchedEffect(sheetMusicMidiFile) {
+                if (sheetMusicMidiFile != null) {
+                    // Create default options
+                    val options = MidiOptions(sheetMusicMidiFile!!)
+                    options.showPiano = false // Don't show piano in sheet music view
+                    options.scrollVert = false // Horizontal scrolling
+                    options.useFullHeight = true // Use full height to eliminate gap
+                    
+                    // The SheetMusic view will be created in AndroidView
+                }
+            }
 
     // Track previous pulse time for shading
     var prevPulseTime by remember { mutableStateOf(-1) }
@@ -79,6 +80,7 @@ fun SheetMusicView(
                 val options = MidiOptions(sheetMusicMidiFile!!)
                 options.showPiano = false
                 options.scrollVert = false
+                options.useFullHeight = true // Use full height to eliminate gap between playline and piano
                 
                 // Get Activity from context (in Compose, context is typically Activity)
                 val activity = when {
@@ -140,6 +142,7 @@ fun SheetMusicView(
                 val options = MidiOptions(sheetMusicMidiFile!!)
                 options.showPiano = false
                 options.scrollVert = false
+                options.useFullHeight = true // Use full height to eliminate gap between playline and piano
                 
                 // Get Activity from context
                 val ctx = view.context

@@ -241,7 +241,8 @@ public class SheetMusic extends SurfaceView implements SurfaceHolder.Callback, S
             sheetheight += (staff.getHeight());
         }
         sheetwidth += 2;
-        sheetheight += LeftMargin;
+        // LeftMargin is only for horizontal spacing, not vertical, so don't add it to sheetheight
+        // This prevents unnecessary bottom padding
     }
 
     /* Adjust the zoom level so that the sheet music page (PageWidth)
@@ -316,7 +317,12 @@ public class SheetMusic extends SurfaceView implements SurfaceHolder.Callback, S
             // Since piano is now outside this view, we use the full view height
             if (pianoRatio == 0 && playerRatio == 0) {
                 // No piano or player in this view, use full view height
-                zoom = (float) newheight / (float) sheetheight;
+                // Ensure content fills the entire height by using the full view height
+                if (sheetheight > 0) {
+                    zoom = (float) newheight / (float) sheetheight;
+                } else {
+                    zoom = 1.0f;
+                }
             } else {
                 // Account for piano/player if they were inside (for backward compatibility)
                 zoom = (float) (newheight - (pianoSize.y * pianoRatio) - (playerHeight * playerRatio)) / (float) sheetheight;
