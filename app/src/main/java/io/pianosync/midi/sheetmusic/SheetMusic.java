@@ -312,7 +312,15 @@ public class SheetMusic extends SurfaceView implements SurfaceHolder.Callback, S
                 playerRatio = 1;
             }
 
-            zoom = (float) (screenheight - (pianoSize.y * pianoRatio) - (playerHeight * playerRatio)) / (float) sheetheight;
+            // Use newheight (actual view height) instead of screenheight to properly scale to container
+            // Since piano is now outside this view, we use the full view height
+            if (pianoRatio == 0 && playerRatio == 0) {
+                // No piano or player in this view, use full view height
+                zoom = (float) newheight / (float) sheetheight;
+            } else {
+                // Account for piano/player if they were inside (for backward compatibility)
+                zoom = (float) (newheight - (pianoSize.y * pianoRatio) - (playerHeight * playerRatio)) / (float) sheetheight;
+            }
         }
         if (bufferCanvas == null) {
             createBufferCanvas();

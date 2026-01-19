@@ -1709,30 +1709,29 @@ fun MidiPlayerScreen(
                         )
                     }
                 }
-
-
-                EnhancedPianoLayout(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .height(120.dp),
-                    pianoConfig = pianoConfig!!,
-                    pressedKeys = pressedKeys,
-                    currentNotes = activeNotes,
-                    activePlayingNotes = activePlayingNotes,
-                    upcomingNotes = upcomingNotes,
-                    syncedNotes = emptySet(),
-                    showKeyNames = settings.difficultyLevel.showKeyNames && settings.showKeyNames,
-                    onNotePressed = { note ->
-                        // Send note on when virtual key is pressed
-                        midiConnectionManager.sendNoteOn(note, 64)
-                    },
-                    onNoteReleased = { note ->
-                        // Send note off when virtual key is released
-                        midiConnectionManager.sendNoteOff(note)
-                    }
-                )
             }
+
+            // Piano keyboard - placed below SheetMusic view to avoid overlap
+            EnhancedPianoLayout(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(120.dp),
+                pianoConfig = pianoConfig!!,
+                pressedKeys = pressedKeys,
+                currentNotes = activeNotes,
+                activePlayingNotes = activePlayingNotes,
+                upcomingNotes = upcomingNotes,
+                syncedNotes = emptySet(),
+                showKeyNames = settings.difficultyLevel.showKeyNames && settings.showKeyNames,
+                onNotePressed = { note ->
+                    // Send note on when virtual key is pressed
+                    midiConnectionManager.sendNoteOn(note, 64)
+                },
+                onNoteReleased = { note ->
+                    // Send note off when virtual key is released
+                    midiConnectionManager.sendNoteOff(note)
+                }
+            )
         }
 
         // BPM Dialog

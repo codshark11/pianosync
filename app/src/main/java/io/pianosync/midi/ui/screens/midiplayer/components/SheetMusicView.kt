@@ -1,7 +1,9 @@
 package io.pianosync.midi.ui.screens.midiplayer.components
 
 import android.app.Activity
+import android.view.View
 import android.view.ViewGroup
+import android.view.ViewTreeObserver
 import android.widget.FrameLayout
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.*
@@ -96,7 +98,36 @@ fun SheetMusicView(
                     sheet.init(sheetMusicMidiFile!!, options)
                     sheetMusicView = sheet
                     
+                    // Set layout parameters to fill the container
+                    val layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    sheet.layoutParams = layoutParams
+                    
                     frameLayout.addView(sheet)
+                    
+                    // Add a global layout listener to recalculate zoom when size changes
+                    var lastWidth = 0
+                    var lastHeight = 0
+                    val layoutListener = object : ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            val currentWidth = sheet.width
+                            val currentHeight = sheet.height
+                            if (currentWidth > 0 && currentHeight > 0 && 
+                                (currentWidth != lastWidth || currentHeight != lastHeight)) {
+                                lastWidth = currentWidth
+                                lastHeight = currentHeight
+                                sheet.ReCalculateZoom()
+                            }
+                        }
+                    }
+                    sheet.viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
+                    
+                    // Post to ensure view is measured before recalculating zoom
+                    sheet.post {
+                        sheet.ReCalculateZoom()
+                    }
                 }
             }
             
@@ -129,8 +160,37 @@ fun SheetMusicView(
                     sheet.init(sheetMusicMidiFile!!, options)
                     sheetMusicView = sheet
                     
+                    // Set layout parameters to fill the container
+                    val layoutParams = FrameLayout.LayoutParams(
+                        ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.MATCH_PARENT
+                    )
+                    sheet.layoutParams = layoutParams
+                    
                     view.removeAllViews()
                     view.addView(sheet)
+                    
+                    // Add a global layout listener to recalculate zoom when size changes
+                    var lastWidth = 0
+                    var lastHeight = 0
+                    val layoutListener = object : ViewTreeObserver.OnGlobalLayoutListener {
+                        override fun onGlobalLayout() {
+                            val currentWidth = sheet.width
+                            val currentHeight = sheet.height
+                            if (currentWidth > 0 && currentHeight > 0 && 
+                                (currentWidth != lastWidth || currentHeight != lastHeight)) {
+                                lastWidth = currentWidth
+                                lastHeight = currentHeight
+                                sheet.ReCalculateZoom()
+                            }
+                        }
+                    }
+                    sheet.viewTreeObserver.addOnGlobalLayoutListener(layoutListener)
+                    
+                    // Post to ensure view is measured before recalculating zoom
+                    sheet.post {
+                        sheet.ReCalculateZoom()
+                    }
                 }
             }
         }
