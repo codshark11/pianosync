@@ -2,28 +2,18 @@ package io.pianosync.midi.ui.screens.player.components
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Loop
-import androidx.compose.material.icons.filled.Piano
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -73,16 +63,14 @@ fun LoopControl(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF2E7D32).copy(alpha = 0.85f)) // Dark grey background with opacity
+                .background(Color(0xFF2E7D32)) // Dark grey background
         )
         // Green progress bar - with opacity
         Box(
             modifier = Modifier
                 .fillMaxWidth(progress)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color(0xFF4CAF50).copy(alpha = 0.85f)) // Green like Synthesia with opacity
+                .background(Color(0xFF4CAF50)) // Green like Synthesia
         )
 
         // Time display inside progress bar

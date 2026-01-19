@@ -1154,8 +1154,7 @@ fun MidiPlayerScreen(
             // Loop control - positioned above sheet music to avoid overlap
             LoopControl(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .fillMaxWidth(),
                 isLoopEnabled = isLoopEnabled,
                 loopStartMs = loopStartMs,
                 loopEndMs = loopEndMs,
