@@ -1,9 +1,11 @@
 package io.pianosync.midi.ui.screens.player.components
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -14,8 +16,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -46,204 +51,121 @@ fun LoopControl(
     val loopStartPct = min(1f, max(0f, loopStartMs.toFloat() / safeSongDuration))
     val loopEndPct = min(1f, max(0f, loopEndMs.toFloat() / safeSongDuration))
 
-    Column(
-        modifier = modifier.padding(horizontal = 8.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+    // Synthesia-style progress bar (single layer) with time display inside
+    var barWidth by remember { mutableStateOf(0) }
+    val density = LocalDensity.current
+    
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(24.dp) // Thicker to accommodate text inside
+            .onSizeChanged { size ->
+                barWidth = size.width
+            }
+            .pointerInput(Unit) {
+                detectTapGestures { offset ->
+                    val seekPosition = (offset.x / size.width * safeSongDuration).toLong()
+                    onSeekTo(seekPosition)
+                }
+            }
     ) {
-        // Time display and controls
+        // Dark grey background for the progress bar track - with opacity
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF2E7D32).copy(alpha = 0.85f)) // Dark grey background with opacity
+        )
+        // Green progress bar - with opacity
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(progress)
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color(0xFF4CAF50).copy(alpha = 0.85f)) // Green like Synthesia with opacity
+        )
+
+        // Time display inside progress bar
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Current time
             Text(
                 text = formatTime(currentTimeMs),
-                fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                modifier = Modifier.zIndex(10f)
             )
-
-            // Loop controls
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Set loop start button
-                IconButton(
-                    onClick = onSetLoopStart,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Text(
-                        text = "A",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                    )
-                }
-
-                // Loop toggle button
-                IconButton(
-                    onClick = { onLoopToggled(!isLoopEnabled) },
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Icon(
-                        imageVector = if (isLoopEnabled) Icons.Default.Loop else Icons.Default.Piano,
-                        contentDescription = "Toggle Loop",
-                        tint = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                    )
-                }
-
-                // Set loop end button
-                IconButton(
-                    onClick = onSetLoopEnd,
-                    modifier = Modifier.size(36.dp)
-                ) {
-                    Text(
-                        text = "B",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                    )
-                }
-            }
 
             // Total duration
             Text(
                 text = formatTime(songDurationMs),
-                fontSize = 12.sp,
-                color = Color.White.copy(alpha = 0.8f)
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+                modifier = Modifier.zIndex(10f)
             )
         }
 
-        // Progress bar with loop markers
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(40.dp)  // Increased height to accommodate larger markers
-                .padding(vertical = 8.dp)
-                .pointerInput(Unit) {
-                    detectTapGestures { offset ->
-                        val seekPosition = (offset.x / size.width * safeSongDuration).toLong()
-                        onSeekTo(seekPosition)
-                    }
-                }
-        ) {
-            // Background track
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.Gray.copy(alpha = 0.3f))
-                    .align(Alignment.Center)
-                    .zIndex(1f) // Ensure it's under other elements
-            )
-
-            // Loop region (if enabled)
-            if (isLoopEnabled && loopStartMs < loopEndMs) {
-                // Create a box that starts at the loop start position
+        // Orange triangular markers for loop points - only show when loop is enabled
+        if (barWidth > 0 && isLoopEnabled) {
+            // Loop start marker (A)
+            if (loopStartMs > 0) {
+                val loopStartOffsetPx = barWidth * loopStartPct - with(density) { 6.dp.toPx() }
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp) // Thicker for better visibility
-                        .align(Alignment.Center)
-                        .zIndex(2f) // Above background, below markers
-                ) {
-                    // Inner box to represent the loop region
-                    Box(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(loopEndPct - loopStartPct)
-                            .offset(x = (loopStartPct * 100).dp)
-                            .background(
-                                MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                                RoundedCornerShape(4.dp)
-                            )
-                    )
-                }
-            }
-
-            // Main progress bar - simple percentage-based width
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White)
-                    .align(Alignment.CenterStart)
-                    .zIndex(3f) // Above loop region, below markers/thumb
-            )
-
-            // Loop Start Marker (A) - ENLARGED
-            if (isLoopEnabled && loopStartMs > 0) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(loopStartPct)
+                        .offset(x = with(density) { loopStartOffsetPx.toDp() })
                         .align(Alignment.CenterStart)
-                        .zIndex(4f) // Above most elements
                 ) {
-                    Box(
+                    Canvas(
                         modifier = Modifier
-                            .size(18.dp) // Larger marker
-                            .align(Alignment.CenterEnd)
-                            .shadow(2.dp, CircleShape)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape)
-                            .border(1.dp, Color.White, CircleShape) // White border for contrast
+                            .size(12.dp, 14.dp)
+                            .align(Alignment.Center)
                     ) {
-                        Text(
-                            text = "A",
-                            fontSize = 12.sp, // Larger text
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.align(Alignment.Center)
+                        val path = Path().apply {
+                            moveTo(size.width / 2f, 0f)
+                            lineTo(0f, size.height)
+                            lineTo(size.width, size.height)
+                            close()
+                        }
+                        drawPath(
+                            path = path,
+                            color = Color(0xFFFF9800) // Orange
                         )
                     }
                 }
             }
 
-            // Loop End Marker (B) - ENLARGED
-            if (isLoopEnabled && loopEndMs > 0 && loopEndMs < songDurationMs) {
+            // Loop end marker (B)
+            if (loopEndMs > 0 && loopEndMs < songDurationMs) {
+                val loopEndOffsetPx = barWidth * loopEndPct - with(density) { 6.dp.toPx() }
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(loopEndPct)
+                        .offset(x = with(density) { loopEndOffsetPx.toDp() })
                         .align(Alignment.CenterStart)
-                        .zIndex(4f) // Above most elements
                 ) {
-                    Box(
+                    Canvas(
                         modifier = Modifier
-                            .size(18.dp) // Larger marker
-                            .align(Alignment.CenterEnd)
-                            .shadow(2.dp, CircleShape)
-                            .background(MaterialTheme.colorScheme.primary, CircleShape)
-                            .border(1.dp, Color.White, CircleShape) // White border for contrast
+                            .size(12.dp, 14.dp)
+                            .align(Alignment.Center)
                     ) {
-                        Text(
-                            text = "B",
-                            fontSize = 12.sp, // Larger text
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.align(Alignment.Center)
+                        val path = Path().apply {
+                            moveTo(size.width / 2f, 0f)
+                            lineTo(0f, size.height)
+                            lineTo(size.width, size.height)
+                            close()
+                        }
+                        drawPath(
+                            path = path,
+                            color = Color(0xFFFF9800) // Orange
                         )
                     }
                 }
-            }
-
-            // Thumb indicator - place with highest z-index so it's always on top
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth(progress)
-                    .align(Alignment.CenterStart)
-                    .zIndex(5f) // Always on top
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(16.dp) // Slightly larger than before
-                        .align(Alignment.CenterEnd)
-                        .shadow(3.dp, CircleShape) // More shadow for depth
-                        .background(Color.White, CircleShape)
-                        .border(1.dp, Color.Black.copy(alpha = 0.3f), CircleShape)
-                )
             }
         }
     }

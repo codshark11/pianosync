@@ -13,6 +13,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,6 +25,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -202,6 +204,34 @@ fun NoteFallVisualizer(
     val totalWhiteKeys = (pianoConfig.minNote..pianoConfig.maxNote).count { isWhiteKey(it) }
     val totalWidth = whiteKeyWidth.dp * totalWhiteKeys
 
+    // Calculate total content height needed for all notes
+    val totalContentHeight = if (notes.isNotEmpty()) {
+        val lastNoteEndTime = notes.maxOf { it.startTime + it.duration }
+        val lastNoteY = timeToYPosition(lastNoteEndTime)
+        val firstNoteY = timeToYPosition(notes.minOf { it.startTime })
+        maxOf(visualizerHeight.value, (lastNoteY - firstNoteY).absoluteValue + 200f)
+    } else {
+        visualizerHeight.value
+    }
+
+    // Vertical scroll state
+    val verticalScrollState = rememberScrollState()
+    val scrollScope = rememberCoroutineScope()
+
+    // Auto-scroll to keep play line visible during playback
+    LaunchedEffect(currentTimeMs, isPlaying) {
+        if (isPlaying && totalContentHeight > visualizerHeight.value) {
+            // Calculate the scroll position to keep play line visible
+            // Play line should be at approximately 80% from top of visible area
+            val targetScrollY = (playLinePosition.value - visualizerHeight.value * 0.2f).coerceIn(0f, totalContentHeight - visualizerHeight.value)
+            
+            // Smoothly scroll to target position
+            scrollScope.launch {
+                verticalScrollState.animateScrollTo(targetScrollY.toInt())
+            }
+        }
+    }
+
     val visibleNotes = if (isPreLoading) {
         emptyList()
     } else {
@@ -286,66 +316,67 @@ fun NoteFallVisualizer(
 
     Box(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.background) // Use theme background
+            .background(MaterialTheme.colorScheme.background) // Dark background for falling notes
             .fillMaxSize()
     ) {
-        // Play line with theme accent
+        // Scrollable notes container with both horizontal and vertical scrolling
         Box(
             modifier = Modifier
-                .offset(y = playLinePosition)
-                .fillMaxWidth()
-                .height(2.dp)
-                .background(
-                    color = highlightAccentColor(), // Use theme accent
-                    shape = RoundedCornerShape(2.dp)
-                )
-        )
-
-        // Scrollable notes container
-        Box(
-            modifier = Modifier
-                .width(totalWidth)
-                .fillMaxHeight()
-                .horizontalScroll(rememberScrollState())
+                .fillMaxSize()
+                .verticalScroll(verticalScrollState, enabled = !isPlaying || totalContentHeight > visualizerHeight.value)
         ) {
-            // Notes
-            visibleNotes.forEach { note ->
-            val startY = timeToYPosition(note.startTime)
-            val endY = timeToYPosition(note.startTime + note.duration)
-            val topY = minOf(startY, endY)
-            val baseHeight = maxOf((endY - startY).absoluteValue, noteHeight.value)
-            val noteHeightPx = when {
-                startY >= playLinePosition.value -> 0f // Hide notes below play line
-                endY <= 0f -> 0f // Not yet visible
-                else -> baseHeight
-            }
-
-            if (noteHeightPx > 0) {
-                val isBlackKey = !isWhiteKey(note.note)
-                val xPos = calculateNoteXPosition(note.note)
-                val noteWidth = if (isBlackKey) blackNoteWidth.dp else whiteNoteWidth.dp
-
+            Box(
+                modifier = Modifier
+                    .width(totalWidth)
+                    .height(totalContentHeight.dp)
+                    .horizontalScroll(rememberScrollState())
+            ) {
+                // Play line with theme accent - positioned relative to scroll
                 Box(
                     modifier = Modifier
-                        .offset(x = xPos.dp, y = topY.dp)
-                        .width(noteWidth)
-                        .height(noteHeightPx.dp)
+                        .offset(y = playLinePosition)
+                        .fillMaxWidth()
+                        .height(2.dp)
                         .background(
-                            color = if (!note.isLeftHand) {
-                                rightHandNoteColor() // Use theme color instead of hardcoded
-                            } else {
-                                leftHandNoteColor() // Use theme color instead of hardcoded
-                            },
-                            shape = RoundedCornerShape(2.dp)
-                        )
-                        .border(
-                            width = 1.dp,
-                            color = Color.White.copy(alpha = if (isBlackKey) 0.4f else 0.2f),
+                            color = highlightAccentColor(), // Use theme accent
                             shape = RoundedCornerShape(2.dp)
                         )
                 )
+                // Notes
+                visibleNotes.forEach { note ->
+                    val startY = timeToYPosition(note.startTime)
+                    val endY = timeToYPosition(note.startTime + note.duration)
+                    val topY = minOf(startY, endY)
+                    val baseHeight = maxOf((endY - startY).absoluteValue, noteHeight.value)
+                    val noteHeightPx = baseHeight
+
+                    if (noteHeightPx > 0) {
+                        val isBlackKey = !isWhiteKey(note.note)
+                        val xPos = calculateNoteXPosition(note.note)
+                        val noteWidth = if (isBlackKey) blackNoteWidth.dp else whiteNoteWidth.dp
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = xPos.dp, y = topY.dp)
+                                .width(noteWidth)
+                                .height(noteHeightPx.dp)
+                                .background(
+                                    color = if (!note.isLeftHand) {
+                                        rightHandNoteColor() // Use theme color instead of hardcoded
+                                    } else {
+                                        leftHandNoteColor() // Use theme color instead of hardcoded
+                                    },
+                                    shape = RoundedCornerShape(2.dp)
+                                )
+                                .border(
+                                    width = 1.dp,
+                                    color = Color.White.copy(alpha = if (isBlackKey) 0.4f else 0.2f),
+                                    shape = RoundedCornerShape(2.dp)
+                                )
+                        )
+                    }
+                }
             }
-        }
         }
     }
 }
@@ -406,8 +437,6 @@ fun MidiPlayerScreen(
     val settingsRepository = remember { SettingsRepository(context) }
     val settings by settingsRepository.settings.collectAsState(initial = AppSettings())
 
-    var showTopBar by remember { mutableStateOf(true) }
-    var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
     var countdownSeconds by remember { mutableStateOf(3) }
     var showCountdown by remember { mutableStateOf(true) }
     var showSheetMusic by remember { mutableStateOf(false) }
@@ -635,11 +664,6 @@ fun MidiPlayerScreen(
         }
     }
 
-    LaunchedEffect(lastInteractionTime) {
-        delay(3000)
-        showTopBar = false
-    }
-
     DisposableEffect(Unit) {
         onDispose {
             // Stop recording if active when leaving the screen
@@ -736,12 +760,6 @@ fun MidiPlayerScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures {
-                    lastInteractionTime = System.currentTimeMillis()
-                    showTopBar = true
-                }
-            }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             Box(
@@ -750,15 +768,10 @@ fun MidiPlayerScreen(
                     .fillMaxWidth()
                     .background(Color(0xFF1A1A1A))
             ) {
-                if (showTopBar) { // Only render the TopAppBar when visible
-                    CenterAlignedTopAppBar(
-                        modifier = Modifier
-                            .graphicsLayer {
-                                alpha = 1f // Always fully opaque when rendered
-                            },
-                        colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                            containerColor = Color(0xFF1A1A1A)
-                        ),
+                CenterAlignedTopAppBar(
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color(0xFF1A1A1A)
+                    ),
                         title = {
                             Text(
                                 text = midiFile.name,
@@ -824,7 +837,6 @@ fun MidiPlayerScreen(
 
                                     TextButton(
                                         onClick = {
-                                            lastInteractionTime = System.currentTimeMillis()
                                             handMenuExpanded = true
                                         },
                                         contentPadding = PaddingValues(horizontal = 8.dp),
@@ -906,7 +918,6 @@ fun MidiPlayerScreen(
                                 // BPM button
                                 TextButton(
                                     onClick = {
-                                        lastInteractionTime = System.currentTimeMillis()
                                         showBpmDialog = true
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp),
@@ -949,15 +960,9 @@ fun MidiPlayerScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier
                                     .height(48.dp)
-                                    .pointerInput(Unit) {
-                                        detectTapGestures {
-                                            lastInteractionTime = System.currentTimeMillis()
-                                        }
-                                    }
                             ) {
                                 IconButton(
                                     onClick = {
-                                        lastInteractionTime = System.currentTimeMillis()
                                         if (isRecording) {
                                             recordingManager.stopRecording()
                                             isRecording = false
@@ -985,7 +990,6 @@ fun MidiPlayerScreen(
 
                                 TextButton(
                                     onClick = {
-                                        lastInteractionTime = System.currentTimeMillis()
                                         metronomeEnabled = !metronomeEnabled
 
                                         if (metronomeEnabled) {
@@ -1010,7 +1014,6 @@ fun MidiPlayerScreen(
                                 // Sheet Music / Falling Notes toggle button
                                 IconButton(
                                     onClick = {
-                                        lastInteractionTime = System.currentTimeMillis()
                                         showSheetMusic = !showSheetMusic
                                     }
                                 ) {
@@ -1021,12 +1024,63 @@ fun MidiPlayerScreen(
                                     )
                                 }
 
+                                // Loop controls
+                                // Set loop start button (A)
+                                IconButton(
+                                    onClick = {
+                                        Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
+                                        val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
+                                        playbackManager.setLoopPoints(currentTimeMs, endPoint)
+                                        playbackManager.toggleLoopMode(true)
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Text(
+                                        text = "A",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+
+                                // Loop toggle button
+                                IconButton(
+                                    onClick = {
+                                        playbackManager.toggleLoopMode(!isLoopEnabled)
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = if (isLoopEnabled) Icons.Default.Loop else Icons.Default.Piano,
+                                        contentDescription = "Toggle Loop",
+                                        tint = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+
+                                // Set loop end button (B)
+                                IconButton(
+                                    onClick = {
+                                        // Only set end if it's after start
+                                        if (currentTimeMs > loopStartMs) {
+                                            Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
+                                            playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
+                                            playbackManager.toggleLoopMode(true)
+                                        }
+                                    },
+                                    modifier = Modifier.size(36.dp)
+                                ) {
+                                    Text(
+                                        text = "B",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+
                                 // Restart button
                                 IconButton(
                                     onClick = {
                                         scope.launch {
-                                            lastInteractionTime = System.currentTimeMillis()
-
                                             // Save recording before restarting if there's one
                                             if (isRecording || recordingManager.getRecordingDuration() > 0) {
                                                 Log.d("MidiPlayer", "Saving recording before restart...")
@@ -1071,7 +1125,6 @@ fun MidiPlayerScreen(
 
                                 IconButton(
                                     onClick = {
-                                        lastInteractionTime = System.currentTimeMillis()
                                         if (isPlaybackActive) {
                                             wasManuallyPaused = true
                                             playbackManager.pausePlayback()
@@ -1095,7 +1148,6 @@ fun MidiPlayerScreen(
                             }
                         }
                     )
-                }
             }
 
             Box(
@@ -1133,6 +1185,40 @@ fun MidiPlayerScreen(
                         }
                     )
                 }
+
+                // Progress bar - overlaid on top of falling notes container
+                LoopControl(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .align(Alignment.TopCenter)
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                    isLoopEnabled = isLoopEnabled,
+                    loopStartMs = loopStartMs,
+                    loopEndMs = loopEndMs,
+                    songDurationMs = songDurationMs,
+                    currentTimeMs = currentTimeMs,
+                    onLoopToggled = { enabled ->
+                        playbackManager.toggleLoopMode(enabled)
+                    },
+                    onSetLoopStart = {
+                        Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
+                        val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
+                        playbackManager.setLoopPoints(currentTimeMs, endPoint)
+                        playbackManager.toggleLoopMode(true)
+                    },
+                    onSetLoopEnd = {
+                        // Only set end if it's after start
+                        if (currentTimeMs > loopStartMs) {
+                            Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
+                            playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
+                            playbackManager.toggleLoopMode(true)
+                        }
+                    },
+                    onSeekTo = { position ->
+                        Log.d("MidiPlayer", "Seeking to position: $position")
+                        playbackManager.seekTo(position)
+                    }
+                )
 
                 if (showScoreDialog) {
                     val sessionDurationMs = System.currentTimeMillis() - sessionStartTimeMs
@@ -1624,72 +1710,6 @@ fun MidiPlayerScreen(
                     }
                 }
 
-                // Replace the LoopControl Box section in MidiPlayerScreen.kt
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .then(
-                            if (showTopBar) {
-                                Modifier
-                                    .graphicsLayer { alpha = 1f }
-                                    .pointerInput(Unit) {
-                                        // Allow interactions when visible
-                                        detectTapGestures { }
-                                    }
-                            } else {
-                                Modifier
-                                    .graphicsLayer { alpha = 0f }
-                                    .pointerInput(Unit) {
-                                        // Block ALL interactions when hidden
-                                        awaitPointerEventScope {
-                                            while (true) {
-                                                val event = awaitPointerEvent()
-                                                // Consume the event to prevent it from reaching child components
-                                                event.changes.forEach { it.consume() }
-                                            }
-                                        }
-                                    }
-                            }
-                        )
-                ) {
-                    if (showTopBar) { // Only render when visible to save performance
-                        LoopControl(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 8.dp, vertical = 4.dp),
-                            isLoopEnabled = isLoopEnabled,
-                            loopStartMs = loopStartMs,
-                            loopEndMs = loopEndMs,
-                            songDurationMs = songDurationMs,
-                            currentTimeMs = currentTimeMs,
-                            onLoopToggled = { enabled ->
-                                lastInteractionTime = System.currentTimeMillis() // Reset timer on interaction
-                                playbackManager.toggleLoopMode(enabled)
-                            },
-                            onSetLoopStart = {
-                                lastInteractionTime = System.currentTimeMillis() // Reset timer on interaction
-                                Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
-                                val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
-                                playbackManager.setLoopPoints(currentTimeMs, endPoint)
-                                playbackManager.toggleLoopMode(true)
-                            },
-                            onSetLoopEnd = {
-                                lastInteractionTime = System.currentTimeMillis() // Reset timer on interaction
-                                // Only set end if it's after start
-                                if (currentTimeMs > loopStartMs) {
-                                    Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
-                                    playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
-                                    playbackManager.toggleLoopMode(true)
-                                }
-                            },
-                            onSeekTo = { position ->
-                                lastInteractionTime = System.currentTimeMillis() // Reset timer on interaction
-                                Log.d("MidiPlayer", "Seeking to position: $position")
-                                playbackManager.seekTo(position)
-                            }
-                        )
-                    }
-                }
 
                 EnhancedPianoLayout(
                     modifier = Modifier
@@ -1798,8 +1818,15 @@ fun EnhancedPianoLayout(
     Box(
         modifier = modifier
             .width(totalWidth)
-            .background(Color(0xFF1A1A1A))
-            .border(1.dp, Color(0xFF333333))
+            .background(
+                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFF2A2A2A),
+                        Color(0xFF1A1A1A)
+                    )
+                )
+            )
+            .border(2.dp, Color(0xFF444444), RoundedCornerShape(4.dp))
             .padding(4.dp)
             .horizontalScroll(rememberScrollState())
     ) {
@@ -1911,14 +1938,38 @@ fun EnhancedWhiteKey(
         modifier = modifier
             .fillMaxHeight()
             .padding(horizontal = 1.dp)
+            .shadow(
+                elevation = 2.dp,
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp),
+                spotColor = Color.Black.copy(alpha = 0.3f)
+            )
             .scale(animatedScale)
             .background(
-                animatedColor,
-                RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                brush = when {
+                    isActivePlaying || isUpcoming -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            animatedColor.copy(alpha = 0.9f),
+                            animatedColor.copy(alpha = 0.7f)
+                        )
+                    )
+                    isPressed -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            animatedColor.copy(alpha = 0.8f),
+                            animatedColor.copy(alpha = 0.6f)
+                        )
+                    )
+                    else -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFFFFEFE),
+                            Color(0xFFF5F5F5)
+                        )
+                    )
+                },
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFFBDBDBD),
+                color = Color(0xFFD0D0D0),
                 shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
             )
             .pointerInput(Unit) {
@@ -2008,14 +2059,38 @@ fun EnhancedBlackKey(
         modifier = modifier
             .width(blackKeyWidth)
             .fillMaxHeight(0.62f)
+            .shadow(
+                elevation = 4.dp,
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp),
+                spotColor = Color.Black.copy(alpha = 0.5f)
+            )
             .scale(animatedScale)
             .background(
-                animatedColor,
-                RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
+                brush = when {
+                    isActivePlaying || isUpcoming -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            animatedColor.copy(alpha = 0.9f),
+                            animatedColor.copy(alpha = 0.7f)
+                        )
+                    )
+                    isPressed -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            animatedColor.copy(alpha = 0.8f),
+                            animatedColor.copy(alpha = 0.6f)
+                        )
+                    )
+                    else -> androidx.compose.ui.graphics.Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFF1A1A1A),
+                            Color(0xFF0A0A0A)
+                        )
+                    )
+                },
+                shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
             )
             .border(
                 width = 1.dp,
-                color = Color(0xFF616161),
+                color = Color(0xFF2A2A2A),
                 shape = RoundedCornerShape(bottomStart = 4.dp, bottomEnd = 4.dp)
             )
             .pointerInput(Unit) {
