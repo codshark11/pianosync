@@ -52,6 +52,7 @@ import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.data.model.DifficultyLevel
 import io.pianosync.midi.ui.screens.player.components.LoopControl
 import io.pianosync.midi.ui.screens.player.components.MetronomeVisualizer
+import io.pianosync.midi.ui.screens.midiplayer.components.SheetMusicView
 import io.pianosync.midi.ui.theme.AccentRose
 import io.pianosync.midi.ui.theme.RoyalPurple40
 import io.pianosync.midi.ui.theme.WarmGold60
@@ -408,6 +409,7 @@ fun MidiPlayerScreen(
     var lastInteractionTime by remember { mutableStateOf(System.currentTimeMillis()) }
     var countdownSeconds by remember { mutableStateOf(3) }
     var showCountdown by remember { mutableStateOf(true) }
+    var showSheetMusic by remember { mutableStateOf(false) }
     val screenWidth = LocalConfiguration.current.screenWidthDp
     val horizontalPadding = 16 // Total horizontal padding
     val scope = rememberCoroutineScope()
@@ -951,6 +953,20 @@ fun MidiPlayerScreen(
                                     )
                                 }
 
+                                // Sheet Music / Falling Notes toggle button
+                                IconButton(
+                                    onClick = {
+                                        lastInteractionTime = System.currentTimeMillis()
+                                        showSheetMusic = !showSheetMusic
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = if (showSheetMusic) Icons.Default.MusicNote else Icons.Default.Piano,
+                                        contentDescription = if (showSheetMusic) "Switch to falling notes" else "Switch to sheet music",
+                                        tint = if (showSheetMusic) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                                    )
+                                }
+
                                 // Restart button
                                 IconButton(
                                     onClick = {
@@ -1033,27 +1049,36 @@ fun MidiPlayerScreen(
                     .fillMaxSize()
                     .weight(1f)
             ) {
-                NoteFallVisualizer(
-                    modifier = Modifier.fillMaxSize(),
-                    notes = when (currentHandMode) {
-                        HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
-                        HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
-                        HandMode.BOTH_HANDS -> midiNotes
-                    },
-                    currentTimeMs = currentTimeMs,
-                    isPlaying = isPlaybackActive,
-                    bpm = currentBpm ?: 120,
-                    pianoConfig = pianoConfig!!,
-                    isPreLoading = isPreLoading,
-                    playbackManager = playbackManager,
-                    correctlyPlayedNotes = correctlyPlayedNotes,
-                    pressedKeys = pressedKeys,
-                    settings = settings, // Pass settings to visualizer
-                    onNoteProcessed = {
-                        // Make sure we're tracking processed notes
-                        totalNotesPlayed++
-                    }
-                )
+                if (showSheetMusic) {
+                    SheetMusicView(
+                        modifier = Modifier.fillMaxSize(),
+                        midiFile = midiFile,
+                        currentTimeMs = currentTimeMs,
+                        isPlaying = isPlaybackActive
+                    )
+                } else {
+                    NoteFallVisualizer(
+                        modifier = Modifier.fillMaxSize(),
+                        notes = when (currentHandMode) {
+                            HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
+                            HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
+                            HandMode.BOTH_HANDS -> midiNotes
+                        },
+                        currentTimeMs = currentTimeMs,
+                        isPlaying = isPlaybackActive,
+                        bpm = currentBpm ?: 120,
+                        pianoConfig = pianoConfig!!,
+                        isPreLoading = isPreLoading,
+                        playbackManager = playbackManager,
+                        correctlyPlayedNotes = correctlyPlayedNotes,
+                        pressedKeys = pressedKeys,
+                        settings = settings, // Pass settings to visualizer
+                        onNoteProcessed = {
+                            // Make sure we're tracking processed notes
+                            totalNotesPlayed++
+                        }
+                    )
+                }
 
                 if (showScoreDialog) {
                     val sessionDurationMs = System.currentTimeMillis() - sessionStartTimeMs
