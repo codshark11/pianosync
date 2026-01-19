@@ -1194,7 +1194,11 @@ fun MidiPlayerScreen(
                         modifier = Modifier.fillMaxSize(),
                         midiFile = midiFile,
                         currentTimeMs = currentTimeMs,
-                        isPlaying = isPlaybackActive
+                        isPlaying = isPlaybackActive,
+                        onSeekTo = { position ->
+                            Log.d("MidiPlayer", "Seeking to position from sheet music: $position")
+                            playbackManager.seekTo(position)
+                        }
                     )
                 } else {
                     NoteFallVisualizer(
