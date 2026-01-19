@@ -238,6 +238,35 @@ fun NoteFallVisualizer(
                     .height(totalContentHeight.dp)
                     .horizontalScroll(rememberScrollState())
             ) {
+                // Vertical guide lines - drawn only at E-F and B-C boundaries (natural semitones)
+                // These boundaries have no black key between them, so guide lines help with alignment
+                // E is note % 12 == 4, F is note % 12 == 5
+                // B is note % 12 == 11, C is note % 12 == 0
+                (pianoConfig.minNote..pianoConfig.maxNote).forEach { note ->
+                    val noteInOctave = note % 12
+                    
+                    // Draw line at the right edge of E keys (E-F boundary) and B keys (B-C boundary)
+                    if ((noteInOctave == 4 || noteInOctave == 11) && isWhiteKey(note)) {
+                        // Calculate the left edge position of the key (without note centering)
+                        val keyboardPadding = 4f
+                        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, whiteKeyWidth, false)
+                        
+                        // Right edge of the key = left edge + full key width
+                        // Account for keyboard padding and key positioning
+                        val rightEdgeX = keyboardPadding + keyPosition + whiteKeyWidth
+                        
+                        Box(
+                            modifier = Modifier
+                                .offset(x = rightEdgeX.dp, y = 0.dp)
+                                .width(1.dp)
+                                .height(totalContentHeight.dp)
+                                .background(
+                                    color = Color.White.copy(alpha = 0.12f)
+                                )
+                        )
+                    }
+                }
+                
                 // Play line with theme accent - positioned relative to scroll
                 Box(
                     modifier = Modifier
