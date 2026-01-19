@@ -218,6 +218,7 @@ fun NoteFallVisualizer(
         }
     }
 
+
     LaunchedEffect(currentTimeMs, pressedKeys, isPlaying) {
         if (isPlaying) {
             // Find notes that are currently at the play line (NO offset for input timing)
@@ -460,6 +461,56 @@ fun MidiPlayerScreen(
         midiNotes.filter { note ->
             note.startTime <= currentTimeMs &&
                     note.startTime + note.duration > currentTimeMs
+        }
+    }
+
+    // Calculate upcoming notes at parent level so they're available in both views
+    // Get original BPM and calculate speed ratio
+    val originalBpm = playbackManager.getOriginalBpm()
+    val speedRatio = remember(currentBpm, originalBpm) {
+        if (originalBpm > 0) (currentBpm ?: 120).toFloat() / originalBpm.toFloat() else 1f
+    }
+    
+    // Filter notes based on current hand mode
+    val filteredNotes = remember(midiNotes, currentHandMode) {
+        when (currentHandMode) {
+            HandMode.LEFT_HAND_ONLY -> midiNotes.filter { it.isLeftHand }
+            HandMode.RIGHT_HAND_ONLY -> midiNotes.filter { !it.isLeftHand }
+            HandMode.BOTH_HANDS -> midiNotes
+        }
+    }
+    
+    // Map of actively playing notes (note number -> isLeftHand) for piano key highlighting
+    // These are notes that should be held down based on their duration
+    val activePlayingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, speedRatio, pianoConfig) {
+        val config = pianoConfig
+        if (!isPlaybackActive || isPreLoading || config == null) {
+            emptyMap<Int, Boolean>()
+        } else {
+            filteredNotes.filter { note ->
+                val notePlaybackTime = (note.startTime / speedRatio).toLong()
+                val noteEndTime = notePlaybackTime + (note.duration / speedRatio).toLong()
+                // Note is actively playing if current time is between start and end
+                currentTimeMs >= notePlaybackTime && currentTimeMs < noteEndTime &&
+                        note.note in config.minNote..config.maxNote
+            }.associate { it.note to it.isLeftHand }
+        }
+    }
+    
+    // Calculate upcoming notes (notes approaching the play line within 200ms)
+    val upcomingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, speedRatio, pianoConfig) {
+        val config = pianoConfig // Store in local variable to avoid smart cast issue
+        if (!isPlaybackActive || isPreLoading || config == null) {
+            emptyMap<Int, Boolean>()
+        } else {
+            val upcomingTimeWindow = 200L // Show keys 200ms before they need to be pressed
+            filteredNotes.filter { note ->
+                val notePlaybackTime = (note.startTime / speedRatio).toLong()
+                val timeDiff = notePlaybackTime - currentTimeMs
+                // Note is upcoming if it's in the future but within the time window
+                timeDiff > 0 && timeDiff <= upcomingTimeWindow &&
+                        note.note in config.minNote..config.maxNote
+            }.associate { it.note to it.isLeftHand }
         }
     }
 
@@ -1645,6 +1696,8 @@ fun MidiPlayerScreen(
                     pianoConfig = pianoConfig!!,
                     pressedKeys = pressedKeys,
                     currentNotes = activeNotes,
+                    activePlayingNotes = activePlayingNotes,
+                    upcomingNotes = upcomingNotes,
                     syncedNotes = emptySet(),
                     showKeyNames = settings.difficultyLevel.showKeyNames && settings.showKeyNames,
                     onNotePressed = { /* Optional: handle virtual key presses */ }
@@ -1721,6 +1774,8 @@ fun EnhancedPianoLayout(
     pianoConfig: PianoConfiguration,
     pressedKeys: Set<Int>,
     currentNotes: List<MidiNote>,
+    activePlayingNotes: Map<Int, Boolean> = emptyMap(),
+    upcomingNotes: Map<Int, Boolean> = emptyMap(),
     syncedNotes: Set<Int>,
     showKeyNames: Boolean = false,
     onNotePressed: (Int) -> Unit
@@ -1749,6 +1804,10 @@ fun EnhancedPianoLayout(
                         note = note,
                         isPhysicallyPressed = note in pressedKeys,
                         isHighlighted = currentNotes.any { it.note == note && note in pressedKeys },
+                        isActivePlaying = note in activePlayingNotes.keys,
+                        isActivePlayingLeftHand = activePlayingNotes[note] == true,
+                        isUpcoming = note in upcomingNotes.keys && note !in activePlayingNotes.keys,
+                        isUpcomingLeftHand = upcomingNotes[note] == true,
                         showKeyName = showKeyNames,
                         onPressed = onNotePressed
                     )
@@ -1768,6 +1827,10 @@ fun EnhancedPianoLayout(
                         note = note,
                         isPhysicallyPressed = note in pressedKeys,
                         isHighlighted = currentNotes.any { it.note == note && note in pressedKeys },
+                        isActivePlaying = note in activePlayingNotes.keys,
+                        isActivePlayingLeftHand = activePlayingNotes[note] == true,
+                        isUpcoming = note in upcomingNotes.keys && note !in activePlayingNotes.keys,
+                        isUpcomingLeftHand = upcomingNotes[note] == true,
                         showKeyName = showKeyNames,
                         onPressed = onNotePressed,
                         keyWidth = pianoConfig.keyWidth
@@ -1784,6 +1847,10 @@ fun EnhancedWhiteKey(
     note: Int,
     isPhysicallyPressed: Boolean = false,
     isHighlighted: Boolean = false,
+    isActivePlaying: Boolean = false,
+    isActivePlayingLeftHand: Boolean = false,
+    isUpcoming: Boolean = false,
+    isUpcomingLeftHand: Boolean = false,
     showKeyName: Boolean = false,
     onPressed: (Int) -> Unit
 ) {
@@ -1803,6 +1870,24 @@ fun EnhancedWhiteKey(
     val animatedColor by animateColorAsState(
         targetValue = when {
             isPhysicallyPressed -> MaterialTheme.colorScheme.outline
+            isActivePlaying -> {
+                // Use different colors for left and right hand actively playing notes
+                // Higher opacity to show the key should be held down
+                if (isActivePlayingLeftHand) {
+                    leftHandNoteColor().copy(alpha = 0.7f) // Sky blue for left hand
+                } else {
+                    rightHandNoteColor().copy(alpha = 0.7f) // Rose for right hand
+                }
+            }
+            isUpcoming -> {
+                // Use subtle, different colors for left and right hand upcoming notes
+                // Lower opacity to clearly indicate it's just a preview, not time to press
+                if (isUpcomingLeftHand) {
+                    leftHandNoteColor().copy(alpha = 0.25f) // Subtle sky blue for left hand
+                } else {
+                    rightHandNoteColor().copy(alpha = 0.25f) // Subtle rose for right hand
+                }
+            }
             else -> MaterialTheme.colorScheme.onBackground
         },
         animationSpec = tween(durationMillis = 50)
@@ -1853,6 +1938,10 @@ fun EnhancedBlackKey(
     note: Int,
     isPhysicallyPressed: Boolean = false,
     isHighlighted: Boolean = false,
+    isActivePlaying: Boolean = false,
+    isActivePlayingLeftHand: Boolean = false,
+    isUpcoming: Boolean = false,
+    isUpcomingLeftHand: Boolean = false,
     showKeyName: Boolean = false,
     onPressed: (Int) -> Unit,
     keyWidth: Float = 0f // Add keyWidth parameter
@@ -1873,6 +1962,24 @@ fun EnhancedBlackKey(
     val animatedColor by animateColorAsState(
         targetValue = when {
             isPhysicallyPressed -> MaterialTheme.colorScheme.surfaceVariant
+            isActivePlaying -> {
+                // Use different colors for left and right hand actively playing notes
+                // Higher opacity to show the key should be held down
+                if (isActivePlayingLeftHand) {
+                    leftHandNoteColor().copy(alpha = 0.75f) // Sky blue for left hand (darker for black keys)
+                } else {
+                    rightHandNoteColor().copy(alpha = 0.75f) // Rose for right hand (darker for black keys)
+                }
+            }
+            isUpcoming -> {
+                // Use subtle, different colors for left and right hand upcoming notes
+                // Lower opacity to clearly indicate it's just a preview, not time to press
+                if (isUpcomingLeftHand) {
+                    leftHandNoteColor().copy(alpha = 0.3f) // Subtle sky blue for left hand
+                } else {
+                    rightHandNoteColor().copy(alpha = 0.3f) // Subtle rose for right hand
+                }
+            }
             else -> MaterialTheme.colorScheme.surface
         },
         animationSpec = tween(durationMillis = 50)
