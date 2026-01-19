@@ -50,21 +50,24 @@ fun SheetMusicView(
     // Track previous pulse time for shading
     var prevPulseTime by remember { mutableStateOf(-1) }
     
-    // Update note shading during playback
+    // Update note shading during playback and when seeking
     LaunchedEffect(currentTimeMs, isPlaying, sheetMusicView) {
-        if (isPlaying && sheetMusicView != null && sheetMusicMidiFile != null) {
+        if (sheetMusicView != null && sheetMusicMidiFile != null) {
             // Convert currentTimeMs to pulses for shading
             // This is a simplified conversion - you may need to adjust based on tempo
             val timeSig = sheetMusicMidiFile!!.getTime()
             val pulsesPerMs = timeSig.getQuarter().toFloat() / (timeSig.getTempo() / 1000f)
             val currentPulses = (currentTimeMs * pulsesPerMs).toInt()
             
-            // Use DontScroll (3) to prevent automatic scrolling, or GradualScroll (2) for smooth scrolling
-            sheetMusicView?.ShadeNotes(currentPulses, prevPulseTime, SheetMusic.GradualScroll)
+            if (isPlaying) {
+                // Use GradualScroll (2) for smooth scrolling during playback
+                sheetMusicView?.ShadeNotes(currentPulses, prevPulseTime, SheetMusic.GradualScroll)
+            } else {
+                // When paused or seeking, use ImmediateScroll (1) to jump to the position immediately
+                // This ensures the sheet music updates when the user seeks to a different position
+                sheetMusicView?.ShadeNotes(currentPulses, prevPulseTime, SheetMusic.ImmediateScroll)
+            }
             prevPulseTime = currentPulses
-        } else if (!isPlaying) {
-            // Reset previous time when playback stops
-            prevPulseTime = -1
         }
     }
 
