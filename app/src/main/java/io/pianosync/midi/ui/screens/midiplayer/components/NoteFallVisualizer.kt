@@ -7,11 +7,11 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
@@ -28,7 +28,6 @@ import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.ui.theme.highlightAccentColor
 import io.pianosync.midi.ui.theme.leftHandNoteColor
 import io.pianosync.midi.ui.theme.rightHandNoteColor
-import kotlinx.coroutines.launch
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
 import kotlin.math.floor
@@ -143,34 +142,6 @@ fun NoteFallVisualizer(
     val totalWhiteKeys = (pianoConfig.minNote..pianoConfig.maxNote).count { isWhiteKey(it) }
     val totalWidth = whiteKeyWidth.dp * totalWhiteKeys
 
-    // Calculate total content height needed for all notes
-    val totalContentHeight = if (notes.isNotEmpty()) {
-        val lastNoteEndTime = notes.maxOf { it.startTime + it.duration }
-        val lastNoteY = timeToYPosition(lastNoteEndTime)
-        val firstNoteY = timeToYPosition(notes.minOf { it.startTime })
-        maxOf(visualizerHeight.value, (lastNoteY - firstNoteY).absoluteValue + 200f)
-    } else {
-        visualizerHeight.value
-    }
-
-    // Vertical scroll state
-    val verticalScrollState = rememberScrollState()
-    val scrollScope = rememberCoroutineScope()
-
-    // Auto-scroll to keep play line visible during playback
-    LaunchedEffect(currentTimeMs, isPlaying) {
-        if (isPlaying && totalContentHeight > visualizerHeight.value) {
-            // Calculate the scroll position to keep play line visible
-            // Play line should be at approximately 80% from top of visible area
-            val targetScrollY = (playLinePosition.value - visualizerHeight.value * 0.2f).coerceIn(0f, totalContentHeight - visualizerHeight.value)
-            
-            // Smoothly scroll to target position
-            scrollScope.launch {
-                verticalScrollState.animateScrollTo(targetScrollY.toInt())
-            }
-        }
-    }
-
     val visibleNotes = if (isPreLoading) {
         emptyList()
     } else {
@@ -257,17 +228,18 @@ fun NoteFallVisualizer(
         modifier = modifier
             .background(MaterialTheme.colorScheme.background) // Dark background for falling notes
             .fillMaxSize()
+            .clip(RoundedCornerShape(0.dp)) // Clip content to prevent overflow above LoopControl
     ) {
-        // Scrollable notes container with both horizontal and vertical scrolling
+        // Scrollable notes container with horizontal scrolling only
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(verticalScrollState, enabled = !isPlaying || totalContentHeight > visualizerHeight.value)
+                .clip(RoundedCornerShape(0.dp)) // Ensure inner content is also clipped
         ) {
             Box(
                 modifier = Modifier
                     .width(totalWidth)
-                    .height(totalContentHeight.dp)
+                    .height(visualizerHeight)
                     .horizontalScroll(rememberScrollState())
             ) {
                 // Vertical guide lines - drawn only at E-F and B-C boundaries (natural semitones)
@@ -291,7 +263,7 @@ fun NoteFallVisualizer(
                             modifier = Modifier
                                 .offset(x = rightEdgeX.dp, y = 0.dp)
                                 .width(1.dp)
-                                .height(totalContentHeight.dp)
+                                .height(visualizerHeight)
                                 .background(
                                     color = Color.White.copy(alpha = 0.12f)
                                 )
