@@ -3,12 +3,12 @@ package io.pianosync.midi.data.parser
 import android.content.Context
 import android.net.Uri
 import android.util.Log
-import io.pianosync.midi.ui.screens.player.MidiNote
+import io.pianosync.midi.ui.screens.midiplayer.components.MidiNote
 import java.io.InputStream
 import io.pianosync.midi.data.parser.midi.MidiFile
 import io.pianosync.midi.data.parser.midi.MidiEvent
 import io.pianosync.midi.data.parser.midi.MidiTrack
-import io.pianosync.midi.ui.screens.player.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException

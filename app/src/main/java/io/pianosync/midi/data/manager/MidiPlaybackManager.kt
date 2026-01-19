@@ -14,8 +14,8 @@ import android.net.Uri
 import android.os.Build
 import io.pianosync.midi.data.model.MidiFile
 import io.pianosync.midi.data.parser.MidiWriter
-import io.pianosync.midi.ui.screens.player.MidiNote
-import io.pianosync.midi.ui.screens.player.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.MidiNote
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive

@@ -1,6 +1,6 @@
 package io.pianosync.midi.data.model
 
-import io.pianosync.midi.ui.screens.player.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
 import java.util.Date
 
 /**

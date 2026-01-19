@@ -3,7 +3,7 @@ package io.pianosync.midi.data.manager
 import android.util.Log
 import io.pianosync.midi.data.model.MidiRecording
 import io.pianosync.midi.data.model.RecordedMidiEvent
-import io.pianosync.midi.ui.screens.player.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow

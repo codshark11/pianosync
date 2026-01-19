@@ -6,8 +6,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import io.pianosync.midi.data.model.MidiRecording
 import io.pianosync.midi.data.model.RecordedMidiEvent
-import io.pianosync.midi.ui.screens.player.HandMode
-import io.pianosync.midi.ui.screens.player.MidiNote
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.MidiNote
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map

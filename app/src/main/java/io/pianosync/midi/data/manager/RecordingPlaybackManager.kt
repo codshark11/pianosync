@@ -8,7 +8,7 @@ import android.os.Build
 import android.util.Log
 import io.pianosync.midi.data.model.MidiRecording
 import io.pianosync.midi.data.model.RecordedMidiEvent
-import io.pianosync.midi.ui.screens.player.MidiNote
+import io.pianosync.midi.ui.screens.midiplayer.components.MidiNote
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

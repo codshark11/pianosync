@@ -33,7 +33,7 @@ import io.pianosync.midi.data.model.PlayedNote
 import io.pianosync.midi.data.repository.MidiFileRepository
 import io.pianosync.midi.data.repository.MidiRecordingRepository
 import io.pianosync.midi.data.repository.PerformanceRepository
-import io.pianosync.midi.ui.screens.player.HandMode
+import io.pianosync.midi.ui.screens.midiplayer.components.HandMode
 import io.pianosync.midi.ui.screens.progress.components.*
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
