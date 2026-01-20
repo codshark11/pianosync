@@ -94,6 +94,23 @@ fun NoteFallVisualizer(
     val futureTimeWindow = twoMeasuresDurationMs
     val visualizerHeight = (configuration.screenHeightDp).dp + topBarHeight
     val playLinePosition = visualizerHeight
+    
+    // Calculate measure height based on number of whole notes per measure
+    // 1 whole note = 1/3 of container height
+    // Measure height = (number of whole notes) * (container height / 3)
+    val measureHeightInPixels = remember(timeSignature, visualizerHeight) {
+        if (timeSignature != null) {
+            // Number of whole notes per measure = (numerator * 4) / denominator
+            // This converts the measure duration to whole notes
+            val wholeNotesPerMeasure = (timeSignature.numerator * 4f) / timeSignature.denominator
+            // Measure height = whole notes * (container height / 3)
+            wholeNotesPerMeasure * (visualizerHeight.value / 3f)
+        } else {
+            // Fallback: assume 4/4 time (1 whole note per measure)
+            visualizerHeight.value / 3f
+        }
+    }
+    
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
 
     val whiteKeyWidth = pianoConfig.keyWidth
@@ -138,8 +155,13 @@ fun NoteFallVisualizer(
     val songDurationMs = lastNoteTime - firstNoteTime
     
     // Calculate pixels per millisecond for vertical scrolling
-    val pixelsPerMs = remember(playLinePosition, futureTimeWindow) {
-        playLinePosition.value / futureTimeWindow.toFloat()
+    // 2 measures should take up 2 * measureHeightInPixels pixels
+    val pixelsPerMs = remember(measureHeightInPixels, futureTimeWindow) {
+        if (futureTimeWindow > 0) {
+            (2f * measureHeightInPixels) / futureTimeWindow.toFloat()
+        } else {
+            0f
+        }
     }
     
     // Scroll states - declared early so it can be used in timeToAbsoluteYPosition
