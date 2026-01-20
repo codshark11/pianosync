@@ -285,7 +285,8 @@ fun NoteFallVisualizer(
                     val currentMeasure = floor((currentTimeMs / measureDurationMsAtOriginalBpm.toFloat())).toInt()
                     
                     // Generate measure lines for visible range (current measure and next 2 measures)
-                    val startMeasure = (currentMeasure - 1).coerceAtLeast(0)
+                    // Skip measure 0 - start from measure 1
+                    val startMeasure = (currentMeasure - 1).coerceAtLeast(1)
                     val endMeasure = currentMeasure + 3 // Show previous + current + 2 ahead
                     
                     (startMeasure..endMeasure).map { measureNum ->
@@ -298,7 +299,8 @@ fun NoteFallVisualizer(
                 }
                 
                 // Draw measure splitter lines (draw before play line so they're visible)
-                measureLines.forEach { (measureNum, measureStartTimeMs) ->
+                // Skip measure 0 and the first line
+                measureLines.filter { (measureNum, _) -> measureNum > 0 }.forEach { (measureNum, measureStartTimeMs) ->
                     val lineY = timeToYPosition(measureStartTimeMs)
                     
                     // Only draw if line is within visible range (extend range to catch lines near edges)
