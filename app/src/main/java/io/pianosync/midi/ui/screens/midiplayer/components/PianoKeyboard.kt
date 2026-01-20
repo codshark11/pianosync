@@ -214,6 +214,29 @@ fun EnhancedPianoLayout(
                         style = Stroke(width = 1f)
                     )
                     
+                    // Draw shadow effect on the right edge of white keys (between keys)
+                    // This creates depth by making keys appear slightly raised
+                    val whiteKeys = (pianoConfig.minNote..pianoConfig.maxNote).filter { isWhiteKey(it) }
+                    val isLastWhiteKey = note == whiteKeys.maxOrNull()
+                    if (!isLastWhiteKey) {
+                        val shadowWidth = 2.5f
+                        val shadowX = x + width
+                        // Draw a subtle shadow gradient on the right edge
+                        drawRect(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    Color.Black.copy(alpha = 0.12f),
+                                    Color.Black.copy(alpha = 0.2f)
+                                ),
+                                startX = shadowX - shadowWidth,
+                                endX = shadowX + shadowWidth
+                            ),
+                            topLeft = Offset(shadowX - shadowWidth, keyboardPadding),
+                            size = Size(shadowWidth * 2, whiteKeyHeight)
+                        )
+                    }
+                    
                     // Draw key name if enabled
                     if (showKeyNames) {
                         val keyName = getNoteNameForMidiNote(note)
