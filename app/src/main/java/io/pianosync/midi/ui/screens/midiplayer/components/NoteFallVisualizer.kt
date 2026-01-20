@@ -34,15 +34,27 @@ import io.pianosync.midi.ui.theme.leftHandNoteColor
 import io.pianosync.midi.ui.theme.rightHandNoteColor
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
+import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
+import kotlin.math.PI
+import kotlinx.coroutines.delay
 
 data class TimeSignatureInfo(
     val numerator: Int,
     val denominator: Int,
     val quarter: Int,  // pulses per quarter note
     val measure: Int   // pulses per measure
+)
+
+data class ExplosionEffect(
+    val x: Float,
+    val y: Float,
+    val color: Color,
+    val startTime: Long,
+    val duration: Long = 250L // 250ms explosion duration
 )
 
 @Composable
@@ -112,6 +124,12 @@ fun NoteFallVisualizer(
     }
     
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
+    
+    // Explosion effect state
+    val activeExplosions = remember { mutableStateOf<List<ExplosionEffect>>(emptyList()) }
+    // Track last explosion time for each note to control frequency
+    val lastExplosionTime = remember { mutableStateOf<Map<MidiNote, Long>>(emptyMap()) }
+    val explosionIntervalMs = 50L // Create explosion every 50ms while note is passing
 
     val whiteKeyWidth = pianoConfig.keyWidth
     val whiteNoteWidth = whiteKeyWidth * 0.6f
@@ -238,16 +256,21 @@ fun NoteFallVisualizer(
             // Convert CORRECT_NOTE_WINDOW from current BPM scale to original BPM scale
             val correctWindowAtOriginalBpm = (CORRECT_NOTE_WINDOW * speedRatio).toLong()
             
+            // Find notes that are currently crossing the playline (within their duration)
             val notesAtPlayLine = notes.filter { note ->
                 // Both are at original BPM scale, so compare directly
                 val timeDiff = currentTimeMs - note.startTime
+                
+                // Check if note is currently at playline (within note duration)
+                val isAtPlayLine = timeDiff >= 0 && timeDiff <= note.duration &&
+                        note.note in pianoConfig.minNote..pianoConfig.maxNote
 
                 // Simple timing log for notes at play line
-                if (timeDiff in 0..correctWindowAtOriginalBpm && note !in processedNotes.value) {
+                if (isAtPlayLine && timeDiff in 0..correctWindowAtOriginalBpm && note !in processedNotes.value) {
                     Log.d("NoteTiming", "Note ${getNoteNameForMidiNote(note.note)} - Expected: ${note.startTime}ms, Current: ${currentTimeMs}ms, Diff: ${timeDiff}ms")
                 }
 
-                timeDiff in 0..correctWindowAtOriginalBpm && // Within the correct timing window
+                isAtPlayLine && timeDiff in 0..correctWindowAtOriginalBpm && // Within the correct timing window
                         note !in processedNotes.value // Not already processed
             }
 
@@ -299,6 +322,91 @@ fun NoteFallVisualizer(
                     playbackManager.processNoteAtPlayLine(note, currentTimeMs)
                 }
             }
+        }
+    }
+    
+    // Continuously create explosions for notes crossing playline
+    LaunchedEffect(isPlaying, currentTimeMs) {
+        if (isPlaying) {
+            while (isPlaying) {
+                val currentTime = System.currentTimeMillis()
+                
+                // Find notes currently crossing the playline
+                val notesCrossingPlayLine = notes.filter { note ->
+                    val timeDiff = currentTimeMs - note.startTime
+                    // Note is currently crossing playline (within its duration)
+                    timeDiff >= 0 && timeDiff <= note.duration &&
+                            note.note in pianoConfig.minNote..pianoConfig.maxNote
+                }
+                
+                // Create explosions for notes crossing playline
+                notesCrossingPlayLine.forEach { note ->
+                    val lastTime = lastExplosionTime.value[note] ?: 0L
+                    
+                    // Create explosion if enough time has passed since last explosion
+                    if (currentTime - lastTime >= explosionIntervalMs) {
+                        // Update last explosion time for this note
+                        lastExplosionTime.value = lastExplosionTime.value + (note to currentTime)
+                        
+                        // Calculate note position at playline
+                        val scrollY = verticalScrollState.value.toFloat()
+                        val noteX = calculateNoteXPosition(note.note, density) + 
+                                    (if (!isWhiteKey(note.note)) keyWidthPx * 0.2f else keyWidthPx * 0.3f)
+                        val playLineY = scrollY + playLinePosition.value
+                        
+                        // Get note color
+                        var explosionColor = if (!note.isLeftHand) rightHandColor else leftHandColor
+                        
+                        // Apply same color transformation for black keys
+                        if (!isWhiteKey(note.note)) {
+                            val complementaryColor = if (!note.isLeftHand) {
+                                Color(0xFF9C27B0) // Vibrant magenta
+                            } else {
+                                Color(0xFF5E35B1) // Deep indigo
+                            }
+                            val blendFactor = 0.5f
+                            explosionColor = Color(
+                                red = explosionColor.red * (1f - blendFactor) + complementaryColor.red * blendFactor,
+                                green = explosionColor.green * (1f - blendFactor) + complementaryColor.green * blendFactor,
+                                blue = explosionColor.blue * (1f - blendFactor) + complementaryColor.blue * blendFactor,
+                                alpha = explosionColor.alpha
+                            )
+                        }
+                        
+                        // Create explosion effect
+                        val explosion = ExplosionEffect(
+                            x = noteX,
+                            y = playLineY,
+                            color = explosionColor,
+                            startTime = currentTime
+                        )
+                        
+                        activeExplosions.value = activeExplosions.value + explosion
+                    }
+                }
+                
+                // Clean up last explosion times for notes that have passed
+                val notesPassed = notes.filter { note ->
+                    val timeDiff = currentTimeMs - note.startTime
+                    timeDiff > note.duration
+                }
+                if (notesPassed.isNotEmpty()) {
+                    lastExplosionTime.value = lastExplosionTime.value.filterKeys { it !in notesPassed }
+                }
+                
+                delay(explosionIntervalMs) // Check every 50ms
+            }
+        }
+    }
+    
+    // Animate explosions - update and remove expired ones
+    LaunchedEffect(activeExplosions.value.size) {
+        while (true) {
+            val currentTime = System.currentTimeMillis()
+            activeExplosions.value = activeExplosions.value.filter { explosion ->
+                currentTime - explosion.startTime < explosion.duration
+            }
+            delay(16) // ~60fps animation
         }
     }
     
@@ -438,6 +546,68 @@ fun NoteFallVisualizer(
                     end = Offset(canvasWidth, playLineY),
                     strokeWidth = 2f
                 )
+                
+                // Draw explosion effects (Synthesia-style starburst)
+                activeExplosions.value.forEach { explosion ->
+                    val elapsed = (System.currentTimeMillis() - explosion.startTime).toFloat()
+                    val progress = (elapsed / explosion.duration).coerceIn(0f, 1f)
+                    
+                    // Fade out over time
+                    val alpha = (1f - progress) * 0.9f
+                    
+                    // Expand size over time
+                    val baseSize = with(density) { 20.dp.toPx() }
+                    val maxSize = with(density) { 60.dp.toPx() }
+                    val currentSize = baseSize + (maxSize - baseSize) * progress
+                    
+                    // Create starburst pattern - spikes pointing upward
+                    val numSpikes = 12
+                    val centerX = explosion.x
+                    val centerY = explosion.y
+                    
+                    // Draw multiple layers for blur effect
+                    for (layer in 0..2) {
+                        val layerSize = currentSize * (1f - layer * 0.2f)
+                        val layerAlpha = alpha * (1f - layer * 0.3f)
+                        
+                        val path = Path()
+                        val spikeLength = layerSize * 0.8f
+                        val innerRadius = layerSize * 0.3f
+                        
+                        // Create upward-pointing starburst
+                        for (i in 0 until numSpikes) {
+                            val angle = (i * 2f * PI.toFloat() / numSpikes) - (PI.toFloat() / 2f) // Start from top
+                            val outerX = centerX + cos(angle.toDouble()).toFloat() * spikeLength
+                            val outerY = centerY + sin(angle.toDouble()).toFloat() * spikeLength
+                            val innerX = centerX + cos(angle.toDouble()).toFloat() * innerRadius
+                            val innerY = centerY + sin(angle.toDouble()).toFloat() * innerRadius
+                            
+                            if (i == 0) {
+                                path.moveTo(innerX, innerY)
+                            } else {
+                                path.lineTo(innerX, innerY)
+                            }
+                            path.lineTo(outerX, outerY)
+                        }
+                        path.close()
+                        
+                        // Draw with gradient: white center to note color
+                        val gradientColors = listOf(
+                            Color.White.copy(alpha = layerAlpha),
+                            explosion.color.copy(alpha = layerAlpha * 0.7f),
+                            explosion.color.copy(alpha = layerAlpha * 0.3f)
+                        )
+                        
+                        drawPath(
+                            path = path,
+                            brush = Brush.radialGradient(
+                                colors = gradientColors,
+                                center = Offset(centerX, centerY),
+                                radius = currentSize
+                            )
+                        )
+                    }
+                }
                 
                 // Draw notes
                 visibleNotes.forEach { note ->
