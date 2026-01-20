@@ -468,10 +468,33 @@ fun NoteFallVisualizer(
                             keyWidthPxForNotes * 0.6f
                         }
                         
-                        val noteColor = if (!note.isLeftHand) {
+                        var noteColor = if (!note.isLeftHand) {
                             rightHandColor
                         } else {
                             leftHandColor
+                        }
+                        
+                        // Apply beautiful color transformation for black keys
+                        if (isBlackKey) {
+                            // Blend with a rich complementary color for elegance
+                            // For blue notes: blend with deep purple
+                            // For pink/rose notes: blend with rich magenta
+                            val complementaryColor = if (!note.isLeftHand) {
+                                // Right hand (pink/rose) -> blend with rich magenta
+                                Color(0xFF9C27B0) // Vibrant magenta
+                            } else {
+                                // Left hand (blue) -> blend with deep indigo
+                                Color(0xFF5E35B1) // Deep indigo
+                            }
+                            
+                            val blendFactor = 0.5f // 50% blend for rich, vibrant result
+                            
+                            noteColor = Color(
+                                red = noteColor.red * (1f - blendFactor) + complementaryColor.red * blendFactor,
+                                green = noteColor.green * (1f - blendFactor) + complementaryColor.green * blendFactor,
+                                blue = noteColor.blue * (1f - blendFactor) + complementaryColor.blue * blendFactor,
+                                alpha = noteColor.alpha
+                            )
                         }
                         
                         // Draw note rectangle with rounded corners

@@ -56,7 +56,7 @@ fun EnhancedPianoLayout(
     // Calculate total width in pixels for Canvas, and in dp for modifier
     val totalWidthPx = keyWidthPx * totalWhiteKeys + keyboardPadding * 2
     val totalWidthDp = pianoConfig.keyWidth * totalWhiteKeys + 8f // 4dp on each side = 8dp total
-    val blackKeyWidth = keyWidthPx * 0.6f
+    val blackKeyWidth = keyWidthPx * 0.4f
     val blackKeyHeightRatio = 0.62f
     
     // Text measurer for key names
@@ -132,7 +132,7 @@ fun EnhancedPianoLayout(
             
             // Convert keyWidth from dp to pixels for Canvas drawing
             val keyWidthPx = with(density) { pianoConfig.keyWidth.dp.toPx() }
-            val blackKeyWidthPx = keyWidthPx * 0.6f
+            val blackKeyWidthPx = keyWidthPx * 0.4f
             
             // Draw border
             drawRect(
@@ -243,7 +243,7 @@ fun EnhancedPianoLayout(
                     val x = keyboardPadding + xPos - blackKeyWidthPx / 2f
                     
                     val state = keyStates[note] ?: KeyState.NORMAL
-                    val keyColor = when (state) {
+                    var keyColor = when (state) {
                         KeyState.PRESSED -> surfaceVariantColor
                         KeyState.ACTIVE_PLAYING -> {
                             val isLeftHand = activePlayingNotes[note] == true
@@ -254,6 +254,30 @@ fun EnhancedPianoLayout(
                             }
                         }
                         KeyState.NORMAL -> Color(0xFF1A1A1A)
+                    }
+                    
+                    // Apply beautiful color transformation for active black keys (same as falling notes)
+                    if (state == KeyState.ACTIVE_PLAYING) {
+                        val isLeftHand = activePlayingNotes[note] == true
+                        // Blend with a rich complementary color for elegance
+                        // For blue notes: blend with deep purple
+                        // For pink/rose notes: blend with rich magenta
+                        val complementaryColor = if (!isLeftHand) {
+                            // Right hand (pink/rose) -> blend with rich magenta
+                            Color(0xFF9C27B0) // Vibrant magenta
+                        } else {
+                            // Left hand (blue) -> blend with deep indigo
+                            Color(0xFF5E35B1) // Deep indigo
+                        }
+                        
+                        val blendFactor = 0.5f // 50% blend for rich, vibrant result
+                        
+                        keyColor = Color(
+                            red = keyColor.red * (1f - blendFactor) + complementaryColor.red * blendFactor,
+                            green = keyColor.green * (1f - blendFactor) + complementaryColor.green * blendFactor,
+                            blue = keyColor.blue * (1f - blendFactor) + complementaryColor.blue * blendFactor,
+                            alpha = keyColor.alpha
+                        )
                     }
                     
                     // Draw black key with gradient or solid color
