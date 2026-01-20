@@ -453,11 +453,12 @@ fun NoteFallVisualizer(
                         }
                         
                         // Draw note rectangle with rounded corners
+                        val cornerRadius = minOf(noteWidthPx / 2f, noteHeightPx / 2f, 8f)
                         drawRoundRect(
                             color = noteColor,
                             topLeft = Offset(xPos, topY),
                             size = Size(noteWidthPx, noteHeightPx),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius)
                         )
                         
                         // Draw note border
@@ -465,7 +466,7 @@ fun NoteFallVisualizer(
                             color = Color.White.copy(alpha = if (isBlackKey) 0.4f else 0.2f),
                             topLeft = Offset(xPos, topY),
                             size = Size(noteWidthPx, noteHeightPx),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(cornerRadius, cornerRadius),
                             style = Stroke(width = 1f)
                         )
                     }

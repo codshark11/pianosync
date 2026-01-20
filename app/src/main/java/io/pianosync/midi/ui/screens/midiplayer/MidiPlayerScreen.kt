@@ -520,389 +520,397 @@ fun MidiPlayerScreen(
                     .fillMaxWidth()
                     .background(Color(0xFF1A1A1A))
             ) {
-                CenterAlignedTopAppBar(
-                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                        containerColor = Color(0xFF1A1A1A)
-                    ),
-                        title = {
-                            Text(
-                                text = midiFile.name,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                        },
-                        navigationIcon = {
-                            // Left side icons
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                IconButton(
-                                    onClick = {
-                                        // Immediately hide sheet music view to prevent it from showing during navigation
-                                        showSheetMusic = false
-                                        
-                                        scope.launch {
-                                            // Check if we have a recording to save
-                                            if (isRecording || recordingManager.hasRecordedEvents()) {
-                                                Log.d("MidiPlayer", "Saving recording before navigation back...")
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Left side icons
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                // Immediately hide sheet music view to prevent it from showing during navigation
+                                showSheetMusic = false
+                                
+                                scope.launch {
+                                    // Check if we have a recording to save
+                                    if (isRecording || recordingManager.hasRecordedEvents()) {
+                                        Log.d("MidiPlayer", "Saving recording before navigation back...")
 
-                                                // Stop recording if still active
-                                                if (isRecording) {
-                                                    recordingManager.stopRecording()
-                                                    isRecording = false
-                                                    Log.d("MidiPlayer", "Stopped recording - navigation back")
-                                                }
-
-                                                // Create and save the recording (events are still available)
-                                                val recording = recordingManager.createRecording(
-                                                    originalMidiFilePath = midiFile.path,
-                                                    originalMidiFileName = midiFile.name,
-                                                    bpm = currentBpm ?: 120,
-                                                    handMode = currentHandMode,
-                                                    score = null // No score since we're leaving early
-                                                )
-
-                                                recording?.let { rec ->
-                                                    Log.d("MidiPlayer", "Created recording with ${rec.recordedEvents.size} events for navigation back")
-                                                    try {
-                                                        recordingRepository.saveRecording(rec)
-                                                        Log.d("MidiPlayer", "MIDI recording saved successfully on navigation back with ${rec.recordedEvents.size} events")
-
-                                                        // Verify it was saved
-                                                        val allRecordings = recordingRepository.allRecordings.first()
-                                                        Log.d("MidiPlayer", "Total recordings in repository after navigation back: ${allRecordings.size}")
-
-                                                    } catch (e: Exception) {
-                                                        Log.e("MidiPlayer", "Failed to save recording on navigation back", e)
-                                                    }
-                                                } ?: Log.d("MidiPlayer", "No recording created - no events available")
-                                            }
-
-                                            playbackManager.cleanup()
-                                            onBackPressed()
-                                        }
-                                    }
-                                ) {
-                                    Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                                }
-
-                                // Hand mode selector
-                                Box {
-                                    var handMenuExpanded by remember { mutableStateOf(false) }
-
-                                    TextButton(
-                                        onClick = {
-                                            handMenuExpanded = true
-                                        },
-                                        contentPadding = PaddingValues(horizontal = 8.dp),
-                                        modifier = Modifier.height(40.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = when (currentHandMode) {
-                                                HandMode.BOTH_HANDS -> Icons.Default.PanoramaHorizontal
-                                                HandMode.LEFT_HAND_ONLY -> Icons.Default.SwipeLeft
-                                                HandMode.RIGHT_HAND_ONLY -> Icons.Default.SwipeRight
-                                            },
-                                            contentDescription = "Hand Mode",
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(2.dp))
-                                        Text(
-                                            text = when (currentHandMode) {
-                                                HandMode.BOTH_HANDS -> stringResource(R.string.both)
-                                                HandMode.LEFT_HAND_ONLY -> stringResource(R.string.left)
-                                                HandMode.RIGHT_HAND_ONLY -> stringResource(R.string.right)
-                                            },
-                                            style = MaterialTheme.typography.labelSmall
-                                        )
-                                    }
-
-                                    DropdownMenu(
-                                        expanded = handMenuExpanded,
-                                        onDismissRequest = { handMenuExpanded = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.both_hands)) },
-                                            onClick = {
-                                                currentHandMode = HandMode.BOTH_HANDS
-                                                handMenuExpanded = false
-                                                // Reset and restart playback with the new hand mode
-                                                playbackManager.resetPlayback()
-                                                playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.PanoramaHorizontal,
-                                                    contentDescription = stringResource(R.string.both_hands)
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.left_hand)) },
-                                            onClick = {
-                                                currentHandMode = HandMode.LEFT_HAND_ONLY
-                                                handMenuExpanded = false
-                                                playbackManager.resetPlayback()
-                                                playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.SwipeLeft,
-                                                    contentDescription = stringResource(R.string.left_hand)
-                                                )
-                                            }
-                                        )
-                                        DropdownMenuItem(
-                                            text = { Text(stringResource(R.string.right_hand)) },
-                                            onClick = {
-                                                currentHandMode = HandMode.RIGHT_HAND_ONLY
-                                                handMenuExpanded = false
-                                                playbackManager.resetPlayback()
-                                                playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Default.SwipeRight,
-                                                    contentDescription = stringResource(R.string.right_hand)
-                                                )
-                                            }
-                                        )
-                                    }
-                                }
-
-                                // BPM button
-                                TextButton(
-                                    onClick = {
-                                        showBpmDialog = true
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.height(40.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Speed,
-                                        contentDescription = "BPM",
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(2.dp))
-                                    Text(
-                                        "${currentBpm ?: 0}",
-                                        style = MaterialTheme.typography.labelSmall
-                                    )
-                                }
-
-                                Surface(
-                                    color = when(settings.difficultyLevel) {
-                                        DifficultyLevel.EASY -> successAccentColor()
-                                        DifficultyLevel.MEDIUM -> WarmGold60
-                                        DifficultyLevel.HARD -> AccentRose
-                                        DifficultyLevel.EXPERT -> RoyalPurple40
-                                    },
-                                    shape = RoundedCornerShape(8.dp)
-                                ) {
-                                    Text(
-                                        text = settings.difficultyLevel.displayName,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Color.White,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
-                                    )
-                                }
-                            }
-                        },
-                        actions = {
-                            // Right side icons
-                            Row(
-                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .height(48.dp)
-                            ) {
-                                IconButton(
-                                    onClick = {
+                                        // Stop recording if still active
                                         if (isRecording) {
                                             recordingManager.stopRecording()
                                             isRecording = false
-                                            Log.d("MidiPlayer", "Stopped recording manually")
-                                        } else {
-                                            if (isConnected) {
-                                                recordingManager.startRecording()
-                                                isRecording = true
-                                                Log.d("MidiPlayer", "Started recording manually")
+                                            Log.d("MidiPlayer", "Stopped recording - navigation back")
+                                        }
+
+                                        // Create and save the recording (events are still available)
+                                        val recording = recordingManager.createRecording(
+                                            originalMidiFilePath = midiFile.path,
+                                            originalMidiFileName = midiFile.name,
+                                            bpm = currentBpm ?: 120,
+                                            handMode = currentHandMode,
+                                            score = null // No score since we're leaving early
+                                        )
+
+                                        recording?.let { rec ->
+                                            Log.d("MidiPlayer", "Created recording with ${rec.recordedEvents.size} events for navigation back")
+                                            try {
+                                                recordingRepository.saveRecording(rec)
+                                                Log.d("MidiPlayer", "MIDI recording saved successfully on navigation back with ${rec.recordedEvents.size} events")
+
+                                                // Verify it was saved
+                                                val allRecordings = recordingRepository.allRecordings.first()
+                                                Log.d("MidiPlayer", "Total recordings in repository after navigation back: ${allRecordings.size}")
+
+                                            } catch (e: Exception) {
+                                                Log.e("MidiPlayer", "Failed to save recording on navigation back", e)
                                             }
-                                        }
-                                    },
-                                    enabled = isConnected
-                                ) {
-                                    Icon(
-                                        imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
-                                        contentDescription = if (isRecording) stringResource(R.string.stop_recording) else stringResource(R.string.start_recording),
-                                        tint = when {
-                                            !isConnected -> Color.Gray
-                                            isRecording -> Color.Red
-                                            else -> Color.White
-                                        }
-                                    )
-                                }
-
-                                TextButton(
-                                    onClick = {
-                                        metronomeEnabled = !metronomeEnabled
-
-                                        if (metronomeEnabled) {
-                                            if (isPlaybackActive) {
-                                                metronomeManager.start(currentBpm ?: 120, metronomeBeatCount, volume = settings.metronomeVolume)
-                                            }
-                                        } else {
-                                            metronomeManager.stop()
-                                        }
-                                    },
-                                    contentPadding = PaddingValues(horizontal = 8.dp),
-                                    modifier = Modifier.height(40.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Timer,
-                                        contentDescription = stringResource(R.string.metronome),
-                                        modifier = Modifier.size(20.dp),
-                                        tint = if (metronomeEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                                    )
-                                }
-
-                                // Sheet Music / Falling Notes toggle button
-                                IconButton(
-                                    onClick = {
-                                        showSheetMusic = !showSheetMusic
+                                        } ?: Log.d("MidiPlayer", "No recording created - no events available")
                                     }
-                                ) {
-                                    Icon(
-                                        imageVector = if (showSheetMusic) Icons.Default.MusicNote else Icons.Default.Piano,
-                                        contentDescription = if (showSheetMusic) "Switch to falling notes" else "Switch to sheet music",
-                                        tint = if (showSheetMusic) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                                    )
-                                }
 
-                                // Loop controls
-                                // Set loop start button (A)
-                                IconButton(
-                                    onClick = {
-                                        Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
-                                        val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
-                                        playbackManager.setLoopPoints(currentTimeMs, endPoint)
-                                        playbackManager.toggleLoopMode(true)
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Text(
-                                        text = "A",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                                    )
-                                }
-
-                                // Loop toggle button
-                                IconButton(
-                                    onClick = {
-                                        playbackManager.toggleLoopMode(!isLoopEnabled)
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = if (isLoopEnabled) Icons.Default.Loop else Icons.Default.Piano,
-                                        contentDescription = "Toggle Loop",
-                                        tint = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                                    )
-                                }
-
-                                // Set loop end button (B)
-                                IconButton(
-                                    onClick = {
-                                        // Only set end if it's after start
-                                        if (currentTimeMs > loopStartMs) {
-                                            Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
-                                            playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
-                                            playbackManager.toggleLoopMode(true)
-                                        }
-                                    },
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Text(
-                                        text = "B",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
-                                    )
-                                }
-
-                                // Restart button
-                                IconButton(
-                                    onClick = {
-                                        scope.launch {
-                                            // Save recording before restarting if there's one
-                                            if (isRecording || recordingManager.getRecordingDuration() > 0) {
-                                                Log.d("MidiPlayer", "Saving recording before restart...")
-
-                                                // Stop recording if still active
-                                                if (isRecording) {
-                                                    recordingManager.stopRecording()
-                                                    isRecording = false
-                                                    Log.d("MidiPlayer", "Stopped recording - restart")
-                                                }
-
-                                                // Create and save the recording
-                                                val recording = recordingManager.createRecording(
-                                                    originalMidiFilePath = midiFile.path,
-                                                    originalMidiFileName = midiFile.name,
-                                                    bpm = currentBpm ?: 120,
-                                                    handMode = currentHandMode,
-                                                    score = null // No score since we're restarting
-                                                )
-
-                                                recording?.let { rec ->
-                                                    Log.d("MidiPlayer", "Created recording with ${rec.recordedEvents.size} events for restart")
-                                                    try {
-                                                        recordingRepository.saveRecording(rec)
-                                                        Log.d("MidiPlayer", "MIDI recording saved successfully on restart with ${rec.recordedEvents.size} events")
-                                                    } catch (e: Exception) {
-                                                        Log.e("MidiPlayer", "Failed to save recording on restart", e)
-                                                    }
-                                                } ?: Log.d("MidiPlayer", "No recording to save on restart")
-                                            }
-
-                                            playbackManager.resetPlayback()
-                                            playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        Icons.Default.Refresh,
-                                        contentDescription = "Restart"
-                                    )
-                                }
-
-                                IconButton(
-                                    onClick = {
-                                        if (isPlaybackActive) {
-                                            wasManuallyPaused = true
-                                            playbackManager.pausePlayback()
-                                        } else {
-                                            wasManuallyPaused = false
-                                            if (currentTimeMs > 0) {
-                                                playbackManager.resumePlayback(midiFile)
-                                            } else {
-                                                playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
-                                            }
-                                        }
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = if (isPlaybackActive)
-                                            Icons.Default.Pause else Icons.Default.PlayArrow,
-                                        contentDescription = if (isPlaybackActive)
-                                            stringResource(R.string.pause) else stringResource(R.string.play)
-                                    )
+                                    playbackManager.cleanup()
+                                    onBackPressed()
                                 }
                             }
+                        ) {
+                            Icon(
+                                Icons.Default.ArrowBack,
+                                contentDescription = "Back",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
                         }
-                    )
+
+                        // Hand mode selector
+                        Box {
+                            var handMenuExpanded by remember { mutableStateOf(false) }
+
+                            TextButton(
+                                onClick = {
+                                    handMenuExpanded = true
+                                },
+                                contentPadding = PaddingValues(horizontal = 8.dp),
+                                modifier = Modifier.height(40.dp)
+                            ) {
+                                Icon(
+                                    imageVector = when (currentHandMode) {
+                                        HandMode.BOTH_HANDS -> Icons.Default.PanoramaHorizontal
+                                        HandMode.LEFT_HAND_ONLY -> Icons.Default.SwipeLeft
+                                        HandMode.RIGHT_HAND_ONLY -> Icons.Default.SwipeRight
+                                    },
+                                    contentDescription = "Hand Mode",
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(2.dp))
+                                Text(
+                                    text = when (currentHandMode) {
+                                        HandMode.BOTH_HANDS -> stringResource(R.string.both)
+                                        HandMode.LEFT_HAND_ONLY -> stringResource(R.string.left)
+                                        HandMode.RIGHT_HAND_ONLY -> stringResource(R.string.right)
+                                    },
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = handMenuExpanded,
+                                onDismissRequest = { handMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.both_hands)) },
+                                    onClick = {
+                                        currentHandMode = HandMode.BOTH_HANDS
+                                        handMenuExpanded = false
+                                        // Reset and restart playback with the new hand mode
+                                        playbackManager.resetPlayback()
+                                        playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.PanoramaHorizontal,
+                                            contentDescription = stringResource(R.string.both_hands)
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.left_hand)) },
+                                    onClick = {
+                                        currentHandMode = HandMode.LEFT_HAND_ONLY
+                                        handMenuExpanded = false
+                                        playbackManager.resetPlayback()
+                                        playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.SwipeLeft,
+                                            contentDescription = stringResource(R.string.left_hand)
+                                        )
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.right_hand)) },
+                                    onClick = {
+                                        currentHandMode = HandMode.RIGHT_HAND_ONLY
+                                        handMenuExpanded = false
+                                        playbackManager.resetPlayback()
+                                        playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                                    },
+                                    leadingIcon = {
+                                        Icon(
+                                            Icons.Default.SwipeRight,
+                                            contentDescription = stringResource(R.string.right_hand)
+                                        )
+                                    }
+                                )
+                            }
+                        }
+
+                        // BPM button
+                        TextButton(
+                            onClick = {
+                                showBpmDialog = true
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Speed,
+                                contentDescription = "BPM",
+                                modifier = Modifier.size(20.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                "${currentBpm ?: 0}",
+                                style = MaterialTheme.typography.labelSmall
+                            )
+                        }
+
+                        Surface(
+                            color = when(settings.difficultyLevel) {
+                                DifficultyLevel.EASY -> successAccentColor()
+                                DifficultyLevel.MEDIUM -> WarmGold60
+                                DifficultyLevel.HARD -> AccentRose
+                                DifficultyLevel.EXPERT -> RoyalPurple40
+                            },
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(
+                                text = settings.difficultyLevel.displayName,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Center: Play and Restart buttons
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                scope.launch {
+                                    // Save recording before restarting if there's one
+                                    if (isRecording || recordingManager.getRecordingDuration() > 0) {
+                                        Log.d("MidiPlayer", "Saving recording before restart...")
+
+                                        // Stop recording if still active
+                                        if (isRecording) {
+                                            recordingManager.stopRecording()
+                                            isRecording = false
+                                            Log.d("MidiPlayer", "Stopped recording - restart")
+                                        }
+
+                                        // Create and save the recording
+                                        val recording = recordingManager.createRecording(
+                                            originalMidiFilePath = midiFile.path,
+                                            originalMidiFileName = midiFile.name,
+                                            bpm = currentBpm ?: 120,
+                                            handMode = currentHandMode,
+                                            score = null // No score since we're restarting
+                                        )
+
+                                        recording?.let { rec ->
+                                            Log.d("MidiPlayer", "Created recording with ${rec.recordedEvents.size} events for restart")
+                                            try {
+                                                recordingRepository.saveRecording(rec)
+                                                Log.d("MidiPlayer", "MIDI recording saved successfully on restart with ${rec.recordedEvents.size} events")
+                                            } catch (e: Exception) {
+                                                Log.e("MidiPlayer", "Failed to save recording on restart", e)
+                                            }
+                                        } ?: Log.d("MidiPlayer", "No recording to save on restart")
+                                    }
+
+                                    playbackManager.resetPlayback()
+                                    playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Default.Refresh,
+                                contentDescription = "Restart",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+
+                        IconButton(
+                            onClick = {
+                                if (isPlaybackActive) {
+                                    wasManuallyPaused = true
+                                    playbackManager.pausePlayback()
+                                } else {
+                                    wasManuallyPaused = false
+                                    if (currentTimeMs > 0) {
+                                        playbackManager.resumePlayback(midiFile)
+                                    } else {
+                                        playbackManager.startPlayback(midiFile, currentBpm ?: 120, 0L, midiNotes, currentHandMode)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPlaybackActive)
+                                    Icons.Default.Pause else Icons.Default.PlayArrow,
+                                contentDescription = if (isPlaybackActive)
+                                    stringResource(R.string.pause) else stringResource(R.string.play),
+                                modifier = Modifier.size(32.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+
+                    // Right side icons
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.height(48.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (isRecording) {
+                                    recordingManager.stopRecording()
+                                    isRecording = false
+                                    Log.d("MidiPlayer", "Stopped recording manually")
+                                } else {
+                                    if (isConnected) {
+                                        recordingManager.startRecording()
+                                        isRecording = true
+                                        Log.d("MidiPlayer", "Started recording manually")
+                                    }
+                                }
+                            },
+                            enabled = isConnected
+                        ) {
+                            Icon(
+                                imageVector = if (isRecording) Icons.Default.Stop else Icons.Default.Mic,
+                                contentDescription = if (isRecording) stringResource(R.string.stop_recording) else stringResource(R.string.start_recording),
+                                tint = when {
+                                    !isConnected -> Color.Gray
+                                    isRecording -> Color.Red
+                                    else -> MaterialTheme.colorScheme.primary
+                                }
+                            )
+                        }
+
+                        TextButton(
+                            onClick = {
+                                metronomeEnabled = !metronomeEnabled
+
+                                if (metronomeEnabled) {
+                                    if (isPlaybackActive) {
+                                        metronomeManager.start(currentBpm ?: 120, metronomeBeatCount, volume = settings.metronomeVolume)
+                                    }
+                                } else {
+                                    metronomeManager.stop()
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 8.dp),
+                            modifier = Modifier.height(40.dp)
+                        ) {
+                            Icon(
+                                Icons.Default.Timer,
+                                contentDescription = stringResource(R.string.metronome),
+                                modifier = Modifier.size(20.dp),
+                                tint = if (metronomeEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Sheet Music / Falling Notes toggle button
+                        IconButton(
+                            onClick = {
+                                showSheetMusic = !showSheetMusic
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MenuBook,
+                                contentDescription = if (showSheetMusic) "Switch to falling notes" else "Switch to sheet music",
+                                tint = if (showSheetMusic) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Loop controls
+                        // Set loop start button (A)
+                        IconButton(
+                            onClick = {
+                                Log.d("MidiPlayer", "Setting loop start to current time: $currentTimeMs")
+                                val endPoint = if (loopEndMs <= currentTimeMs) songDurationMs else loopEndMs
+                                playbackManager.setLoopPoints(currentTimeMs, endPoint)
+                                playbackManager.toggleLoopMode(true)
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text(
+                                text = "A",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Loop toggle button
+                        IconButton(
+                            onClick = {
+                                playbackManager.toggleLoopMode(!isLoopEnabled)
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isLoopEnabled) Icons.Default.Loop else Icons.Default.Piano,
+                                contentDescription = "Toggle Loop",
+                                tint = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+
+                        // Set loop end button (B)
+                        IconButton(
+                            onClick = {
+                                // Only set end if it's after start
+                                if (currentTimeMs > loopStartMs) {
+                                    Log.d("MidiPlayer", "Setting loop end to current time: $currentTimeMs")
+                                    playbackManager.setLoopPoints(loopStartMs, currentTimeMs)
+                                    playbackManager.toggleLoopMode(true)
+                                }
+                            },
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Text(
+                                text = "B",
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isLoopEnabled) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.6f)
+                            )
+                        }
+                    }
+                }
             }
 
             // Loop control - positioned above sheet music to avoid overlap
