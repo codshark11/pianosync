@@ -222,27 +222,6 @@ fun MidiPlayerScreen(
         }
     }
     
-    // Calculate upcoming notes (notes approaching the play line within 200ms)
-    // Only show upcoming notes when actually playing (not when paused)
-    // Note: currentTimeMs and note times are both at original BPM scale (same as SheetMusicView)
-    val upcomingNotes = remember(currentTimeMs, filteredNotes, isPlaybackActive, isPreLoading, pianoConfig) {
-        val config = pianoConfig // Store in local variable to avoid smart cast issue
-        if (!isPlaybackActive || isPreLoading || config == null) {
-            emptyMap<Int, Boolean>()
-        } else {
-            // Convert upcoming time window from current BPM scale to original BPM scale
-            // If playing at 1.5x speed, 200ms at current BPM = 300ms at original BPM
-            val upcomingTimeWindow = (200L * speedRatio).toLong()
-            filteredNotes.filter { note ->
-                // Both currentTimeMs and note.startTime are at original BPM scale
-                val timeDiff = note.startTime - currentTimeMs
-                // Note is upcoming if it's in the future but within the time window
-                timeDiff > 0 && timeDiff <= upcomingTimeWindow &&
-                        note.note in config.minNote..config.maxNote
-            }.associate { it.note to it.isLeftHand }
-        }
-    }
-
     var showScoreDialog by remember { mutableStateOf(false) }
     var totalNotesPlayed by remember { mutableStateOf(0) }
     var totalNotesInSong by remember { mutableStateOf(0) }
@@ -1470,7 +1449,6 @@ fun MidiPlayerScreen(
                 pressedKeys = pressedKeys,
                 currentNotes = activeNotes,
                 activePlayingNotes = activePlayingNotes,
-                upcomingNotes = upcomingNotes,
                 syncedNotes = emptySet(),
                 showKeyNames = settings.difficultyLevel.showKeyNames && settings.showKeyNames,
                 onNotePressed = { note ->

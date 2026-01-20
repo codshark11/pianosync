@@ -1,28 +1,32 @@
 package io.pianosync.midi.ui.screens.midiplayer.components
 
 import android.util.Log
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import io.pianosync.midi.data.manager.MidiPlaybackManager
 import io.pianosync.midi.data.model.AppSettings
 import io.pianosync.midi.ui.theme.highlightAccentColor
@@ -31,6 +35,8 @@ import io.pianosync.midi.ui.theme.rightHandNoteColor
 import kotlin.math.absoluteValue
 import kotlin.math.ceil
 import kotlin.math.floor
+import kotlin.math.max
+import kotlin.math.min
 
 data class TimeSignatureInfo(
     val numerator: Int,
@@ -63,7 +69,6 @@ fun NoteFallVisualizer(
     val CORRECT_NOTE_WINDOW = settings.difficultyLevel.correctNoteWindowMs
 
     val noteHeight = 16.dp
-    val pastTimeWindow = 2000L
     val topBarHeight = 64.dp
     val pianoKeyboardHeight = 120.dp
     val spacingAboveKeyboard = 4.dp // Small spacing between play line and keyboard
@@ -87,76 +92,122 @@ fun NoteFallVisualizer(
     }
     
     val futureTimeWindow = twoMeasuresDurationMs
-    val visualizerHeight = (configuration.screenHeightDp).dp - topBarHeight
-    val playLinePosition = visualizerHeight - pianoKeyboardHeight - spacingAboveKeyboard
+    val visualizerHeight = (configuration.screenHeightDp).dp + topBarHeight
+    val playLinePosition = visualizerHeight
     val processedNotes = remember { mutableStateOf<Set<MidiNote>>(emptySet()) }
 
     val whiteKeyWidth = pianoConfig.keyWidth
     val whiteNoteWidth = whiteKeyWidth * 0.6f
     val blackNoteWidth = whiteKeyWidth * 0.4f
 
-    // This function positions notes vertically based on their time
-    // Note: currentTimeMs and noteTime are both at original BPM scale (same as SheetMusicView)
-    fun timeToYPosition(noteTime: Long): Float {
-        // Both noteTime and currentTimeMs are at original BPM scale, so compare directly
-        // Use unified timing system - no offset needed as timing is handled by MidiPlaybackManager
-        // Calculate position based on time difference to current playback time
-        val timeDiff = noteTime - currentTimeMs
-        val pixelsPerMs = playLinePosition.value / futureTimeWindow.toFloat()
-
-        return when {
-            timeDiff <= -pastTimeWindow -> visualizerHeight.value + 135f
-            timeDiff >= futureTimeWindow -> {
-                // Position future notes off-screen based on how far in the future they are
-                val extraOffset = ((timeDiff - futureTimeWindow) / 500f).coerceAtMost(200f)
-                -noteHeight.value - extraOffset
-            }
-            else -> playLinePosition.value - (timeDiff * pixelsPerMs)
-        }
-    }
-
-    fun calculateNoteXPosition(note: Int): Float {
+    fun calculateNoteXPosition(note: Int, density: androidx.compose.ui.unit.Density): Float {
         // Use the same positioning logic as the keyboard for consistency
-        // The piano keyboard Box has padding(4.dp), so we need to account for that offset
-        val keyboardPadding = 4f
+        // The piano keyboard has padding(4.dp), so we need to account for that offset
+        val keyboardPadding = with(density) { 4.dp.toPx() }
+        
+        // Convert keyWidth from dp to pixels for Canvas drawing
+        val keyWidthPx = with(density) { whiteKeyWidth.dp.toPx() }
         
         val isBlackKey = !isWhiteKey(note)
-        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, whiteKeyWidth, isBlackKey)
+        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, keyWidthPx, isBlackKey)
+        
+        val whiteNoteWidthPx = keyWidthPx * 0.6f
+        val blackNoteWidthPx = keyWidthPx * 0.4f
         
         return if (isBlackKey) {
             // For black keys: keyPosition is already the center of the gap
             // Center the note on that position, accounting for keyboard padding
-            keyboardPadding + keyPosition - (blackNoteWidth / 2f)
+            keyboardPadding + keyPosition - (blackNoteWidthPx / 2f)
         } else {
             // For white keys: keyPosition is the left edge of the white key
             // White keys have 1dp padding on each side, so the visible area starts at keyPosition + 1dp
             // Center the note within the visible white key area
-            // Visible width = whiteKeyWidth - 2dp (1dp padding on each side)
-            // Note should be centered: keyPosition + 1dp + (visibleWidth - noteWidth) / 2
-            val visibleKeyWidth = whiteKeyWidth - 2f // Account for 1dp padding on each side
-            keyboardPadding + keyPosition + 1f + ((visibleKeyWidth - whiteNoteWidth) / 2f)
+            val paddingPx = with(density) { 1.dp.toPx() }
+            val visibleKeyWidth = keyWidthPx - (paddingPx * 2f)
+            keyboardPadding + keyPosition + paddingPx + ((visibleKeyWidth - whiteNoteWidthPx) / 2f)
         }
     }
 
     val totalWhiteKeys = (pianoConfig.minNote..pianoConfig.maxNote).count { isWhiteKey(it) }
-    val totalWidth = whiteKeyWidth.dp * totalWhiteKeys
+    
+    // Calculate total content height based on song duration for vertical scrolling
+    val firstNoteTime = remember(notes) { notes.minOfOrNull { it.startTime } ?: 0L }
+    val lastNoteTime = remember(notes) { 
+        notes.maxOfOrNull { it.startTime + it.duration } ?: 0L 
+    }
+    val songDurationMs = lastNoteTime - firstNoteTime
+    
+    // Calculate pixels per millisecond for vertical scrolling
+    val pixelsPerMs = remember(playLinePosition, futureTimeWindow) {
+        playLinePosition.value / futureTimeWindow.toFloat()
+    }
+    
+    // Scroll states - declared early so it can be used in timeToAbsoluteYPosition
+    val verticalScrollState = rememberScrollState()
+    
+    // Calculate total content height - needs to be large enough for scrolling
+    // We need space for past notes (below playline) and future notes (above playline)
+    val pastTimeWindow = 2000L // Show 2 seconds of past notes
+    val totalTimeWindow = futureTimeWindow + pastTimeWindow
+    val totalContentHeight = remember(totalTimeWindow, pixelsPerMs, visualizerHeight) {
+        max((totalTimeWindow * pixelsPerMs).toFloat(), visualizerHeight.value * 2f)
+    }
+    
+    // This function positions notes vertically relative to the static playline
+    // Future notes (noteTime > currentTimeMs) appear above playline
+    // Past notes (noteTime < currentTimeMs) appear below playline
+    // The playline is at playLinePosition.value from the top of the viewport
+    fun timeToAbsoluteYPosition(noteTime: Long): Float {
+        val timeFromCurrent = (noteTime - currentTimeMs).toFloat()
+        // Future notes have positive timeFromCurrent, so they're above playline (negative offset)
+        // Past notes have negative timeFromCurrent, so they're below playline (positive offset)
+        // The playline in Canvas coordinates is: scrollY + playLinePosition.value
+        // Notes are positioned relative to that
+        val scrollY = verticalScrollState.value.toFloat()
+        val playLineYInCanvas = scrollY + playLinePosition.value
+        return playLineYInCanvas - (timeFromCurrent * pixelsPerMs)
+    }
+    
+    // Get density for dp to px conversion
+    val density = LocalDensity.current
+    
+    // Calculate total width to match PianoKeyboard: keyWidth * totalWhiteKeys + keyboardPadding * 2
+    // This ensures falling notes align properly with the piano keyboard
+    // Note: keyWidth is in dp, so we need to convert it to pixels for the calculation
+    val keyboardPadding = with(density) { 4.dp.toPx() }
+    val keyWidthPx = with(density) { whiteKeyWidth.dp.toPx() }
+    val totalWidth = keyWidthPx * totalWhiteKeys + keyboardPadding * 2
+    
+    // Text measurer for measure numbers
+    val textMeasurer = rememberTextMeasurer()
+    
+    // Get theme colors (must be called in @Composable context)
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val accentColor = highlightAccentColor()
+    val leftHandColor = leftHandNoteColor()
+    val rightHandColor = rightHandNoteColor()
 
-    val visibleNotes = if (isPreLoading) {
-        emptyList()
-    } else {
-        notes.filter { note ->
-            val startY = timeToYPosition(note.startTime)
-            val endY = timeToYPosition(note.startTime + note.duration)
 
-            // More efficient filtering: only render notes that are within or approaching the visible area
-            // Extend the range slightly above screen (-300) to ensure smooth entry
-            endY <= visualizerHeight.value + noteHeight.value &&
-                    startY <= visualizerHeight.value + 300f &&
-                    startY >= -300f &&  // Allow notes to start from further above
-                    note.note in pianoConfig.minNote..pianoConfig.maxNote
+    // Calculate visible notes with viewport culling
+    val visibleNotes = remember(notes, currentTimeMs, verticalScrollState.value, isPreLoading, firstNoteTime, pixelsPerMs) {
+        if (isPreLoading) {
+            emptyList()
+        } else {
+            val scrollY = verticalScrollState.value.toFloat()
+            val viewportTop = scrollY
+            val viewportBottom = scrollY + visualizerHeight.value
+            
+            notes.filter { note ->
+                val noteStartY = timeToAbsoluteYPosition(note.startTime)
+                val noteEndY = timeToAbsoluteYPosition(note.startTime + note.duration)
+                
+                // Viewport culling: only render notes that intersect with visible area
+                noteEndY >= viewportTop - 300f && // Margin for smooth entry
+                noteStartY <= viewportBottom + 300f && // Margin for smooth exit
+                note.note in pianoConfig.minNote..pianoConfig.maxNote
+            }
         }
     }
-
 
     LaunchedEffect(currentTimeMs, pressedKeys, isPlaying) {
         if (isPlaying) {
@@ -211,7 +262,11 @@ fun NoteFallVisualizer(
         }
     }
 
-    LaunchedEffect(currentTimeMs, isPlaying) {
+    // Auto-scroll to keep playline visible (optional - can be removed if manual scroll is preferred)
+    // The playline stays at fixed screen position playLinePosition.value
+    // Notes scroll past it as time progresses
+
+    LaunchedEffect(currentTimeMs, isPlaying, visibleNotes) {
         if (isPlaying) {
             visibleNotes.forEach { note ->
                 // Both currentTimeMs and note times are at original BPM scale (same as SheetMusicView)
@@ -224,190 +279,194 @@ fun NoteFallVisualizer(
             }
         }
     }
-
+    
+    // Calculate measure lines
+    val measureLines = remember(timeSignature, originalBpm, currentTimeMs, firstNoteTime, lastNoteTime) {
+        if (timeSignature != null && originalBpm > 0) {
+            val measureDurationMsAtOriginalBpm = (timeSignature.measure.toLong() * 60_000L) / 
+                (timeSignature.quarter.toLong() * originalBpm.toLong())
+            
+            if (measureDurationMsAtOriginalBpm > 0) {
+                val firstMeasure = floor((firstNoteTime / measureDurationMsAtOriginalBpm.toFloat())).toInt()
+                val lastMeasure = ceil((lastNoteTime / measureDurationMsAtOriginalBpm.toFloat())).toInt()
+                
+                (firstMeasure..lastMeasure).map { measureNum ->
+                    val measureStartTimeMs = measureNum * measureDurationMsAtOriginalBpm
+                    measureNum to measureStartTimeMs
+                }
+            } else {
+                emptyList<Pair<Int, Long>>()
+            }
+        } else {
+            emptyList<Pair<Int, Long>>()
+        }
+    }
+    
     Box(
         modifier = modifier
-            .background(MaterialTheme.colorScheme.background) // Dark background for falling notes
+            .background(MaterialTheme.colorScheme.background)
             .fillMaxSize()
-            .clip(RoundedCornerShape(0.dp)) // Clip content to prevent overflow above LoopControl
     ) {
-        // Scrollable notes container with horizontal scrolling only
         Box(
             modifier = Modifier
-                .fillMaxSize()
-                .clip(RoundedCornerShape(0.dp)) // Ensure inner content is also clipped
+                .width(with(density) { totalWidth.dp })
+                .height(with(density) { totalContentHeight.dp })
+                .verticalScroll(verticalScrollState)
         ) {
-            Box(
+            Canvas(
                 modifier = Modifier
-                    .width(totalWidth)
-                    .height(visualizerHeight)
-                    .horizontalScroll(rememberScrollState())
+                    .width(with(density) { totalWidth.dp })
+                    .height(with(density) { totalContentHeight.dp })
             ) {
-                // Vertical guide lines - drawn only at E-F and B-C boundaries (natural semitones)
-                // These boundaries have no black key between them, so guide lines help with alignment
-                // E is note % 12 == 4, F is note % 12 == 5
-                // B is note % 12 == 11, C is note % 12 == 0
+                val scrollY = verticalScrollState.value.toFloat()
+                val canvasWidth = size.width
+                val canvasHeight = size.height
+                
+                // Draw background
+                drawRect(
+                    color = backgroundColor,
+                    size = Size(canvasWidth, canvasHeight)
+                )
+                
+                // Draw vertical guide lines at E-F and B-C boundaries
+                val keyboardPadding = with(density) { 4.dp.toPx() }
+                val keyWidthPxForDrawing = with(density) { whiteKeyWidth.dp.toPx() }
                 (pianoConfig.minNote..pianoConfig.maxNote).forEach { note ->
                     val noteInOctave = note % 12
                     
-                    // Draw line at the right edge of E keys (E-F boundary) and B keys (B-C boundary)
                     if ((noteInOctave == 4 || noteInOctave == 11) && isWhiteKey(note)) {
-                        // Calculate the left edge position of the key (without note centering)
-                        val keyboardPadding = 4f
-                        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, whiteKeyWidth, false)
+                        val keyPosition = calculateNotePosition(note, pianoConfig.minNote, keyWidthPxForDrawing, false)
+                        val rightEdgeX = keyboardPadding + keyPosition + keyWidthPxForDrawing
                         
-                        // Right edge of the key = left edge + full key width
-                        // Account for keyboard padding and key positioning
-                        val rightEdgeX = keyboardPadding + keyPosition + whiteKeyWidth
-                        
-                        Box(
-                            modifier = Modifier
-                                .offset(x = rightEdgeX.dp, y = 0.dp)
-                                .width(1.dp)
-                                .height(visualizerHeight)
-                                .background(
-                                    color = Color.White.copy(alpha = 0.12f)
-                                )
+                        drawLine(
+                            color = Color.White.copy(alpha = 0.12f),
+                            start = Offset(rightEdgeX, 0f),
+                            end = Offset(rightEdgeX, canvasHeight),
+                            strokeWidth = 1f
                         )
                     }
                 }
                 
-                // Calculate measure boundaries and draw measure splitter lines
-                val measureLines = if (timeSignature != null && originalBpm > 0) {
-                    // Calculate measure duration in milliseconds at original BPM
-                    // Notes are stored in milliseconds at original BPM
-                    val measureDurationMsAtOriginalBpm = (timeSignature.measure.toLong() * 60_000L) / (timeSignature.quarter.toLong() * originalBpm.toLong())
-                    
-                    // Find the current measure based on currentTimeMs
-                    // currentTimeMs is at original BPM scale (same as SheetMusicView)
-                    // Both currentTimeMs and measure lines are at original BPM scale, so compare directly
-                    // Use unified timing system - no offset needed
-                    val currentMeasure = floor((currentTimeMs / measureDurationMsAtOriginalBpm.toFloat())).toInt()
-                    
-                    // Generate measure lines for visible range (current measure and next 2 measures)
-                    // Skip measure 0 - start from measure 1
-                    val startMeasure = (currentMeasure - 1).coerceAtLeast(1)
-                    val endMeasure = currentMeasure + 3 // Show previous + current + 2 ahead
-                    
-                    (startMeasure..endMeasure).map { measureNum ->
-                        // Calculate the time for this measure start in original BPM domain (same as note times)
-                        val measureStartTimeMs = measureNum * measureDurationMsAtOriginalBpm
-                        measureNum to measureStartTimeMs
-                    }
-                } else {
-                    emptyList<Pair<Int, Long>>()
-                }
-                
-                // Draw measure splitter lines (draw before play line so they're visible)
-                // Skip measure 0 and the first line
+                // Draw measure lines
                 measureLines.filter { (measureNum, _) -> measureNum > 0 }.forEach { (measureNum, measureStartTimeMs) ->
-                    val lineY = timeToYPosition(measureStartTimeMs)
+                    val lineY = timeToAbsoluteYPosition(measureStartTimeMs)
                     
-                    // Only draw if line is within visible range (extend range to catch lines near edges)
-                    if (lineY >= -200f && lineY <= visualizerHeight.value + 200f) {
-                        // Draw the measure splitter line with 3D style - shadow and gradient for depth
-                        Box(
-                            modifier = Modifier
-                                .offset(y = lineY.dp)
-                                .width(totalWidth)
-                                .height(2.dp)
-                                .shadow(
-                                    elevation = 3.dp,
-                                    shape = RoundedCornerShape(1.dp)
+                    // Only draw if line is within visible range
+                    // lineY is already in Canvas coordinates, so check against viewport
+                    if (lineY >= scrollY - 200f && lineY <= scrollY + canvasHeight + 200f) {
+                        // Draw measure line with gradient effect
+                        drawLine(
+                            brush = Brush.verticalGradient(
+                                colors = listOf(
+                                    Color.White.copy(alpha = 0.6f),
+                                    Color.White.copy(alpha = 0.4f),
+                                    Color.White.copy(alpha = 0.25f)
                                 )
-                                .drawBehind {
-                                    // Draw a gradient to create 3D effect - lighter on top, darker on bottom
-                                    drawRect(
-                                        brush = Brush.verticalGradient(
-                                            colors = listOf(
-                                                Color.White.copy(alpha = 0.6f),
-                                                Color.White.copy(alpha = 0.4f),
-                                                Color.White.copy(alpha = 0.25f)
-                                            )
-                                        )
-                                    )
-                                }
+                            ),
+                            start = Offset(0f, lineY),
+                            end = Offset(canvasWidth, lineY),
+                            strokeWidth = 2f
                         )
                         
-                        // Display measure number just above the measure line with 3D text effect
-                        if (lineY >= -30f && lineY <= visualizerHeight.value + 30f) {
-                            // Create 3D text effect with shadow
-                            Box(
-                                modifier = Modifier
-                                    .offset(x = 4.dp, y = (lineY - 18).dp)
-                            ) {
-                                // Shadow layer (behind text)
-                                Text(
-                                    text = "$measureNum",
-                                    style = TextStyle(
-                                        fontSize = 12.sp,
-                                        color = Color.Black.copy(alpha = 0.4f),
-                                        fontWeight = FontWeight.Medium
-                                    ),
-                                    modifier = Modifier
-                                        .offset(x = 1.dp, y = 1.dp) // Slight offset for shadow
-                                )
-                                // Main text layer (on top)
-                                Text(
-                                    text = "$measureNum",
-                                    style = TextStyle(
-                                        fontSize = 12.sp,
-                                        color = Color.White.copy(alpha = 0.8f),
-                                        fontWeight = FontWeight.Bold
-                                    ),
-                                    modifier = Modifier
-                                        .graphicsLayer {
-                                            // Add subtle elevation
-                                            shadowElevation = 2f
-                                        }
-                                )
-                            }
+                        // Draw measure number
+                        val lineYRelative = lineY - scrollY
+                        // Ensure text is drawn within valid canvas bounds
+                        // lineY is in Canvas coordinates, but we need to check if it's within actual canvas bounds
+                        // Text should be at least 20px from top and bottom to avoid constraint issues
+                        // Clamp lineY to valid canvas bounds before calculating textY
+                        val clampedLineY = lineY.coerceIn(0f, canvasHeight)
+                        val textY = clampedLineY - 18f
+                        if (lineYRelative >= -30f && lineYRelative <= canvasHeight + 30f && 
+                            textY >= 20f && textY <= canvasHeight - 20f) {
+                            val text = "$measureNum"
+                            
+                            // Draw shadow
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = text,
+                                style = TextStyle(
+                                    fontSize = 12.sp,
+                                    color = Color.Black.copy(alpha = 0.4f),
+                                    fontWeight = FontWeight.Medium
+                                ),
+                                topLeft = Offset(4f + 1f, textY + 1f)
+                            )
+                            
+                            // Draw main text
+                            drawText(
+                                textMeasurer = textMeasurer,
+                                text = text,
+                                style = TextStyle(
+                                    fontSize = 12.sp,
+                                    color = Color.White.copy(alpha = 0.8f),
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                topLeft = Offset(4f, textY)
+                            )
                         }
                     }
                 }
                 
-                // Play line with theme accent - positioned relative to scroll
-                Box(
-                    modifier = Modifier
-                        .offset(y = playLinePosition)
-                        .fillMaxWidth()
-                        .height(2.dp)
-                        .background(
-                            color = highlightAccentColor(), // Use theme accent
-                            shape = RoundedCornerShape(2.dp)
-                        )
+                // Draw play line - static at fixed position relative to viewport
+                // In Canvas coordinates, this is scrollY + playLinePosition.value
+                val playLineY = scrollY + playLinePosition.value
+                drawLine(
+                    color = accentColor,
+                    start = Offset(0f, playLineY),
+                    end = Offset(canvasWidth, playLineY),
+                    strokeWidth = 2f
                 )
-                // Notes
+                
+                // Draw notes
                 visibleNotes.forEach { note ->
-                    val startY = timeToYPosition(note.startTime)
-                    val endY = timeToYPosition(note.startTime + note.duration)
-                    val topY = minOf(startY, endY)
-                    val baseHeight = maxOf((endY - startY).absoluteValue, noteHeight.value)
-                    val noteHeightPx = baseHeight
-
-                    if (noteHeightPx > 0) {
+                    // For falling notes: position the note rectangle
+                    // startY = position when note starts (time T)
+                    // endY = position when note ends (time T + duration)
+                    val startY = timeToAbsoluteYPosition(note.startTime)
+                    val endY = timeToAbsoluteYPosition(note.startTime + note.duration)
+                    // With our positioning: later times = smaller Y (higher on screen)
+                    // So endY < startY (end time position is above start time position)
+                    // For the note rectangle: top should be at endY (later time), bottom at startY (earlier time)
+                    // But visually, we want the note to extend from its start position downward
+                    // So: topY = endY (where note ends, visually higher), bottomY = startY (where note starts, visually lower)
+                    val topY = endY
+                    val bottomY = startY
+                    val noteHeightPx = maxOf((bottomY - topY).absoluteValue, with(density) { noteHeight.toPx() })
+                    
+                    // Viewport culling for notes
+                    val noteYRelative = topY - scrollY
+                    if (noteHeightPx > 0 && noteYRelative + noteHeightPx >= -50f && noteYRelative <= canvasHeight + 50f) {
                         val isBlackKey = !isWhiteKey(note.note)
-                        val xPos = calculateNoteXPosition(note.note)
-                        val noteWidth = if (isBlackKey) blackNoteWidth.dp else whiteNoteWidth.dp
-
-                        Box(
-                            modifier = Modifier
-                                .offset(x = xPos.dp, y = topY.dp)
-                                .width(noteWidth)
-                                .height(noteHeightPx.dp)
-                                .background(
-                                    color = if (!note.isLeftHand) {
-                                        rightHandNoteColor() // Use theme color instead of hardcoded
-                                    } else {
-                                        leftHandNoteColor() // Use theme color instead of hardcoded
-                                    },
-                                    shape = RoundedCornerShape(2.dp)
-                                )
-                                .border(
-                                    width = 1.dp,
-                                    color = Color.White.copy(alpha = if (isBlackKey) 0.4f else 0.2f),
-                                    shape = RoundedCornerShape(2.dp)
-                                )
+                        val xPos = calculateNoteXPosition(note.note, density)
+                        // Convert keyWidth to pixels for note width calculation
+                        val keyWidthPxForNotes = with(density) { whiteKeyWidth.dp.toPx() }
+                        val noteWidthPx = if (isBlackKey) {
+                            keyWidthPxForNotes * 0.4f
+                        } else {
+                            keyWidthPxForNotes * 0.6f
+                        }
+                        
+                        val noteColor = if (!note.isLeftHand) {
+                            rightHandColor
+                        } else {
+                            leftHandColor
+                        }
+                        
+                        // Draw note rectangle with rounded corners
+                        drawRoundRect(
+                            color = noteColor,
+                            topLeft = Offset(xPos, topY),
+                            size = Size(noteWidthPx, noteHeightPx),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f)
+                        )
+                        
+                        // Draw note border
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = if (isBlackKey) 0.4f else 0.2f),
+                            topLeft = Offset(xPos, topY),
+                            size = Size(noteWidthPx, noteHeightPx),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f),
+                            style = Stroke(width = 1f)
                         )
                     }
                 }
