@@ -39,6 +39,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.activity.compose.BackHandler
 import io.pianosync.midi.data.manager.MetronomeManager
 import io.pianosync.midi.data.manager.MidiConnectionManager
 import io.pianosync.midi.data.manager.MidiPlaybackManager
@@ -460,6 +461,53 @@ fun MidiPlayerScreen(
         return
     }
 
+    // Handle system back button - immediately hide sheet music view
+    BackHandler(enabled = true) {
+        // Immediately hide sheet music view to prevent it from showing during navigation
+        showSheetMusic = false
+        
+        scope.launch {
+            // Check if we have a recording to save
+            if (isRecording || recordingManager.hasRecordedEvents()) {
+                Log.d("MidiPlayer", "Saving recording before navigation back (system back button)...")
+
+                // Stop recording if still active
+                if (isRecording) {
+                    recordingManager.stopRecording()
+                    isRecording = false
+                    Log.d("MidiPlayer", "Stopped recording - navigation back (system back button)")
+                }
+
+                // Create and save the recording (events are still available)
+                val recording = recordingManager.createRecording(
+                    originalMidiFilePath = midiFile.path,
+                    originalMidiFileName = midiFile.name,
+                    bpm = currentBpm ?: 120,
+                    handMode = currentHandMode,
+                    score = null // No score since we're leaving early
+                )
+
+                recording?.let { rec ->
+                    Log.d("MidiPlayer", "Created recording with ${rec.recordedEvents.size} events for navigation back (system back button)")
+                    try {
+                        recordingRepository.saveRecording(rec)
+                        Log.d("MidiPlayer", "MIDI recording saved successfully on navigation back (system back button) with ${rec.recordedEvents.size} events")
+
+                        // Verify it was saved
+                        val allRecordings = recordingRepository.allRecordings.first()
+                        Log.d("MidiPlayer", "Total recordings in repository after navigation back (system back button): ${allRecordings.size}")
+
+                    } catch (e: Exception) {
+                        Log.e("MidiPlayer", "Failed to save recording on navigation back (system back button)", e)
+                    }
+                } ?: Log.d("MidiPlayer", "No recording created - no events available (system back button)")
+            }
+
+            playbackManager.cleanup()
+            onBackPressed()
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -490,6 +538,9 @@ fun MidiPlayerScreen(
                             ) {
                                 IconButton(
                                     onClick = {
+                                        // Immediately hide sheet music view to prevent it from showing during navigation
+                                        showSheetMusic = false
+                                        
                                         scope.launch {
                                             // Check if we have a recording to save
                                             if (isRecording || recordingManager.hasRecordedEvents()) {
@@ -1281,6 +1332,9 @@ fun MidiPlayerScreen(
                                         Button(
                                             modifier = Modifier.weight(1f),
                                             onClick = {
+                                                // Immediately hide sheet music view to prevent it from showing during navigation
+                                                showSheetMusic = false
+                                                
                                                 scope.launch {
                                                     isSavingPerformance = true
 
