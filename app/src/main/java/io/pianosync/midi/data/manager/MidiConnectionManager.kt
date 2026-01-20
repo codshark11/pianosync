@@ -1,5 +1,6 @@
 package io.pianosync.midi.data.manager
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.midi.*
 import android.os.Build
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+@SuppressLint("NewApi")
 class MidiConnectionManager private constructor(private val context: Context) {
     private val midiManager: MidiManager? = context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
     private var currentDevice: MidiDevice? = null

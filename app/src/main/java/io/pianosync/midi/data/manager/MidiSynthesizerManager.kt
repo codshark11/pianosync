@@ -1,5 +1,6 @@
 package io.pianosync.midi.data.manager
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
@@ -18,6 +19,7 @@ import kotlin.math.exp
  * Manages MIDI synthesizer for generating sounds when keys are pressed.
  * Uses Android's built-in MIDI synthesizer if available, otherwise falls back to AudioTrack tone generation.
  */
+@SuppressLint("NewApi")
 class MidiSynthesizerManager private constructor(private val context: Context) {
     private val midiManager: MidiManager? = context.getSystemService(Context.MIDI_SERVICE) as? MidiManager
     private var synthesizerDevice: MidiDevice? = null

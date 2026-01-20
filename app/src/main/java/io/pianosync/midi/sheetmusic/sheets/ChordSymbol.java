@@ -490,7 +490,7 @@ public class ChordSymbol implements MusicSymbol {
         canvas.translate(-(getWidth() - getMinWidth()), 0);
     }
 
-    /* Draw the accidental symbols.  If two symbols overlap (if they
+    /** Draw the accidental symbols.  If two symbols overlap (if they
      * are less than 6 notes apart), we cannot draw the symbol directly
      * above the previous one.  Instead, we must shift it to the right.
      * @param ytop The ylocation (in pixels) where the top of the staff starts.

@@ -18,7 +18,7 @@ import io.pianosync.midi.sheetmusic.NoteDuration;
 import io.pianosync.midi.sheetmusic.SheetMusic;
 
 
-/* @class RestSymbol
+/** @class RestSymbol
  * A Rest symbol represents a rest - whole, half, quarter, or eighth.
  * The Rest symbol has a starttime and a duration, just like a regular
  * note.

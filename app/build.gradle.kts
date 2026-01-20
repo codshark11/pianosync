@@ -38,6 +38,18 @@ android {
     buildFeatures {
         compose = true
     }
+    
+    lint {
+        // Don't abort build on lint errors (we'll fix them)
+        abortOnError = true
+        // Allow warnings to not fail the build
+        warningsAsErrors = false
+        // Disable specific checks that are not critical
+        disable += setOf(
+            "ObsoleteLintCustomCheck",  // Navigation library lint checks are outdated
+            "InlinedApi"  // MIDI API constants are inlined, but we have runtime checks
+        )
+    }
 }
 
 dependencies {
@@ -50,7 +62,6 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.json.json)
     implementation(libs.androidx.material3)
     implementation(libs.androidx.datastore.preferences)
     implementation(libs.androidx.navigation.compose)

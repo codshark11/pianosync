@@ -20,7 +20,7 @@ import io.pianosync.midi.sheetmusic.MidiOptions;
 import io.pianosync.midi.sheetmusic.SheetMusic;
 
 
-/* @class Staff
+/** @class Staff
  * The Staff is used to draw a single Staff (a row of measures) in the 
  * SheetMusic Control. A Staff needs to draw
  * - The Clef
