@@ -83,6 +83,19 @@
     <string name="test_mode">Mode test</string>
     <string name="dismiss">Fermer</string>
 
+    <!-- Connect Device (Bluetooth / USB) -->
+    <string name="connect_device">Connecter un appareil</string>
+    <string name="connect_via_bluetooth">Bluetooth</string>
+    <string name="connect_via_usb">USB</string>
+    <string name="no_bluetooth_devices">Aucun clavier trouvé</string>
+    <string name="no_usb_devices">Branchez un clavier MIDI USB</string>
+    <string name="pair_keyboard_bluetooth_settings">Associez votre clavier dans les paramètres Bluetooth</string>
+    <string name="open_bluetooth_settings">Ouvrir les paramètres Bluetooth</string>
+    <string name="scan_again">Scanner à nouveau</string>
+    <string name="connecting">Connexion…</string>
+    <string name="connection_failed">Échec de la connexion</string>
+    <string name="disconnect">Déconnecter</string>
+
     <!-- Progress Screen -->
     <string name="your_practice_progress">Vos progrès d\'entraînement</string>
     <string name="pieces">Morceaux</string>

@@ -29,8 +29,10 @@ import io.pianosync.midi.data.model.PerformanceRecord
 import io.pianosync.midi.data.parser.MidiParser
 import io.pianosync.midi.data.repository.MidiFileRepository
 import io.pianosync.midi.data.repository.PerformanceRepository
+import io.pianosync.midi.ui.screens.home.components.DeviceConnectDialog
 import io.pianosync.midi.ui.screens.home.components.ImportCard
 import io.pianosync.midi.ui.screens.home.components.MidiFileCard
+import io.pianosync.midi.rememberMidiManager
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,12 +46,13 @@ fun HomeScreen(
     val context = LocalContext.current
     val repository = remember(context) { MidiFileRepository(context) }
     val performanceRepository = remember(context) { PerformanceRepository(context) }
-    val midiManager = remember { MidiConnectionManager.getInstance(context) }
+    val midiManager = rememberMidiManager()
     val coroutineScope = rememberCoroutineScope()
 
     var midiFiles by remember { mutableStateOf<List<MidiFile>>(emptyList()) }
     var performanceData by remember { mutableStateOf<Map<String, List<PerformanceRecord>>>(emptyMap()) }
     var showConnectionDialog by remember { mutableStateOf(false) }
+    var showDeviceConnectDialog by remember { mutableStateOf(false) }
     var selectedMidiFile by remember { mutableStateOf<MidiFile?>(null) }
 
     // Debug mode - toggle this for testing without piano
@@ -154,6 +157,14 @@ fun HomeScreen(
                             )
                         }
 
+                        // Connect device button (Bluetooth / USB)
+                        Button(
+                            onClick = { showDeviceConnectDialog = true },
+                            modifier = Modifier.padding(end = 8.dp)
+                        ) {
+                            Text(stringResource(R.string.connect_device))
+                        }
+
                         // Add Settings button
                         IconButton(
                             onClick = onNavigateToSettings
@@ -222,7 +233,15 @@ fun HomeScreen(
             }
         }
 
-        // Connection dialog - won't show in debug mode
+        // Connect device dialog (Bluetooth / USB options)
+        if (showDeviceConnectDialog) {
+            DeviceConnectDialog(
+                onDismiss = { showDeviceConnectDialog = false },
+                onConnected = { showDeviceConnectDialog = false }
+            )
+        }
+
+        // Connection dialog - won't show in debug mode (when user taps a song without being connected)
         if (showConnectionDialog && !effectivelyConnected) {
             Dialog(onDismissRequest = {
                 showConnectionDialog = false

@@ -83,6 +83,19 @@
     <string name="test_mode">Test Mode</string>
     <string name="dismiss">Dismiss</string>
 
+    <!-- Connect Device (Bluetooth / USB) -->
+    <string name="connect_device">Connect device</string>
+    <string name="connect_via_bluetooth">Bluetooth</string>
+    <string name="connect_via_usb">USB</string>
+    <string name="no_bluetooth_devices">No keyboard found</string>
+    <string name="no_usb_devices">Plug in a USB MIDI keyboard</string>
+    <string name="pair_keyboard_bluetooth_settings">Pair your keyboard in Bluetooth settings</string>
+    <string name="open_bluetooth_settings">Open Bluetooth settings</string>
+    <string name="scan_again">Scan again</string>
+    <string name="connecting">Connecting…</string>
+    <string name="connection_failed">Connection failed</string>
+    <string name="disconnect">Disconnect</string>
+
     <!-- Progress Screen -->
     <string name="your_practice_progress">Your Practice Progress</string>
     <string name="pieces">Pieces</string>

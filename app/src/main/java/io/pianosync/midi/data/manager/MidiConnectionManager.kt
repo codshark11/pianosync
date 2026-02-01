@@ -7,10 +7,13 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import androidx.activity.ComponentActivity
+import io.pianosync.midi.data.ble.BleMidiConnector
+import io.pianosync.midi.data.ble.MidiMessageCallback
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+
+enum class ConnectionMode { NONE, USB, BLE }
 
 @SuppressLint("NewApi")
 class MidiConnectionManager private constructor(private val context: Context) {
@@ -21,6 +24,10 @@ class MidiConnectionManager private constructor(private val context: Context) {
     @Volatile
     private var midiInputPort: MidiInputPort? = null
     private var midiOutputPort: MidiOutputPort? = null
+
+    private val bleConnector = BleMidiConnector(context)
+    @Volatile
+    private var connectionMode = ConnectionMode.NONE
 
     // Add recording manager
     private val recordingManager = MidiRecordingManager()
@@ -36,9 +43,13 @@ class MidiConnectionManager private constructor(private val context: Context) {
     val pressedKeys: StateFlow<Set<Int>> = _pressedKeys.asStateFlow()
     val releasedKeys: StateFlow<Set<Int>> = _releasedKeys.asStateFlow()
     private val _errorMessage = MutableStateFlow<String?>(null)
+    val errorMessage: StateFlow<String?> = _errorMessage.asStateFlow()
 
     // Expose recording manager
     fun getRecordingManager(): MidiRecordingManager = recordingManager
+
+    /** Expose BLE connector for UI (scan, connect). */
+    fun getBleConnector(): BleMidiConnector = bleConnector
 
     private val deviceCallback = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
         object : MidiManager.DeviceCallback() {
@@ -70,7 +81,8 @@ class MidiConnectionManager private constructor(private val context: Context) {
                 Handler(Looper.getMainLooper())
             )
         }
-        checkExistingDevices()
+        // Do not auto-connect; user chooses Bluetooth or USB from UI
+        // checkExistingDevices()
     }
 
     private fun handleDeviceConnection(deviceInfo: MidiDeviceInfo) {
@@ -87,12 +99,108 @@ class MidiConnectionManager private constructor(private val context: Context) {
                     _errorMessage.value = "Failed to open device"
                     return@openDevice
                 }
+                connectionMode = ConnectionMode.USB
                 currentDevice = device
                 currentDeviceInfo = deviceInfo
                 setupMidiInput(device)
             },
             Handler(Looper.getMainLooper())
         )
+    }
+
+    /**
+     * Returns list of USB MIDI devices (API 23+). On older API returns empty list.
+     */
+    fun getUsbDevices(): List<MidiDeviceInfo> {
+        if (midiManager == null) return emptyList()
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return emptyList()
+        val typeUsb = MidiDeviceInfo.TYPE_USB
+        return midiManager.devices.filter { it.type == typeUsb }
+            .filter { it.outputPortCount > 0 && it.inputPortCount > 0 }
+    }
+
+    /**
+     * Open a USB MIDI device by MidiDeviceInfo. Closes any current connection first.
+     */
+    fun openUsbDevice(deviceInfo: MidiDeviceInfo) {
+        disconnect()
+        _errorMessage.value = null
+        openDevice(deviceInfo)
+    }
+
+    /**
+     * Connect to a BLE MIDI device by address. Closes any current connection first.
+     * Uses BleMidiConnector (same UUIDs as decompiled project).
+     */
+    fun connectBleDevice(
+        address: String,
+        onConnecting: () -> Unit,
+        onConnected: (String?) -> Unit,
+        onFailed: (String) -> Unit
+    ) {
+        disconnect()
+        _errorMessage.value = null
+        bleConnector.parser.callback = object : MidiMessageCallback {
+            override fun onMidiNoteMessage(status: Int, note: Int, velocity: Int, channel: Int) {
+                onMidiMessageFromBle(status, note, velocity, channel)
+            }
+        }
+        bleConnector.connect(address, object : BleMidiConnector.ConnectCallback {
+            override fun onConnecting() = onConnecting()
+            override fun onConnected(deviceName: String?) {
+                connectionMode = ConnectionMode.BLE
+                _isConnected.value = true
+                _errorMessage.value = null
+                onConnected(deviceName)
+            }
+            override fun onConnectFailed(message: String) {
+                _errorMessage.value = message
+                onFailed(message)
+            }
+            override fun onDisconnected() {
+                if (connectionMode == ConnectionMode.BLE) {
+                    connectionMode = ConnectionMode.NONE
+                    _isConnected.value = false
+                    _pressedKeys.value = emptySet()
+                }
+            }
+        })
+    }
+
+    /**
+     * Called when BLE parser receives a MIDI note message. Same pipeline as USB MIDI.
+     */
+    private fun onMidiMessageFromBle(status: Int, note: Int, velocity: Int, channel: Int) {
+        recordingManager.recordMidiEvent(status, note, velocity, channel)
+        when (status) {
+            0x90 -> {
+                if (velocity > 0) {
+                    _pressedKeys.value = _pressedKeys.value + note
+                    _releasedKeys.value = _releasedKeys.value - note
+                    synthesizerManager.noteOn(note, velocity, channel)
+                } else {
+                    _pressedKeys.value = _pressedKeys.value - note
+                    _releasedKeys.value = _releasedKeys.value + note
+                    synthesizerManager.noteOff(note, 0, channel)
+                }
+            }
+            0x80 -> {
+                _pressedKeys.value = _pressedKeys.value - note
+                _releasedKeys.value = _releasedKeys.value + note
+                synthesizerManager.noteOff(note, 0, channel)
+            }
+        }
+    }
+
+    /**
+     * Disconnect current device (USB or BLE).
+     */
+    fun disconnect() {
+        if (connectionMode == ConnectionMode.BLE) {
+            bleConnector.disconnect()
+            connectionMode = ConnectionMode.NONE
+        }
+        closeCurrentDevice()
     }
 
     private fun setupMidiInput(device: MidiDevice) {
@@ -210,6 +318,7 @@ class MidiConnectionManager private constructor(private val context: Context) {
             midiReceiver = null
             currentDevice = null
             currentDeviceInfo = null
+            connectionMode = ConnectionMode.NONE
             _isConnected.value = false
             _pressedKeys.value = emptySet()
         }
@@ -252,6 +361,7 @@ class MidiConnectionManager private constructor(private val context: Context) {
         if (midiManager != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && deviceCallback != null) {
             midiManager.unregisterDeviceCallback(deviceCallback)
         }
+        bleConnector.disconnect()
         closeCurrentDevice()
         synthesizerManager.cleanup()
     }
